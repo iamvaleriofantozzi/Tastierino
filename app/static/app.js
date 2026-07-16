@@ -252,8 +252,10 @@ const hotkeyPicker = (() => {
   const keys = pop.querySelector(".hotkey-keys");
   const title = $("#hotkeyPopoverTitle");
   let row = null;
+  let anchor = null;
   let catIndex = 0;
   let pickMod = 0;
+  let raf = 0;
 
   KEY_CATALOG.forEach(([label], i) => {
     const btn = document.createElement("button");
@@ -299,40 +301,57 @@ const hotkeyPicker = (() => {
     syncModChips();
   }
 
-  function positionNear(anchor) {
+  function positionNear() {
+    if (!anchor || pop.hidden) return;
     const rect = anchor.getBoundingClientRect();
     const pad = 10;
-    pop.hidden = false;
     const w = pop.offsetWidth;
     const h = pop.offsetHeight;
+    const viewH = window.innerHeight;
+    const viewW = window.innerWidth;
+    const visible = rect.bottom > 0 && rect.top < viewH && rect.right > 0 && rect.left < viewW;
+    if (!visible) {
+      close();
+      return;
+    }
     let left = rect.left;
     let top = rect.bottom + 8;
-    if (left + w > window.innerWidth - pad) left = window.innerWidth - w - pad;
+    if (left + w > viewW - pad) left = viewW - w - pad;
     if (left < pad) left = pad;
-    if (top + h > window.innerHeight - pad) top = rect.top - h - 8;
+    if (top + h > viewH - pad) top = rect.top - h - 8;
     if (top < pad) top = pad;
     pop.style.left = `${Math.round(left)}px`;
     pop.style.top = `${Math.round(top)}px`;
   }
 
+  function schedulePosition() {
+    if (pop.hidden || !anchor) return;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(positionNear);
+  }
+
   function open(targetRow) {
     stopRecord({keep: false});
     row = targetRow;
+    anchor = row.querySelector(".hotkey-field");
     const binding = getRowBinding(row);
     pickMod = binding.type === 1 ? 0 : binding.mod;
     const found = KEY_CATALOG.findIndex(([, entries]) =>
       entries.some(([, type, code]) => type === binding.type && code === binding.code));
     catIndex = found >= 0 ? found : 0;
     renderKeys();
-    positionNear(row.querySelector(".hotkey-field"));
-    row.querySelector(".hotkey-field")?.setAttribute("aria-expanded", "true");
+    pop.hidden = false;
+    positionNear();
+    anchor?.setAttribute("aria-expanded", "true");
   }
 
   function close() {
-    if (pop.hidden) return;
+    if (pop.hidden && !row) return;
+    cancelAnimationFrame(raf);
     pop.hidden = true;
-    row?.querySelector(".hotkey-field")?.setAttribute("aria-expanded", "false");
+    anchor?.setAttribute("aria-expanded", "false");
     row = null;
+    anchor = null;
   }
 
   cats.addEventListener("click", event => {
@@ -341,14 +360,20 @@ const hotkeyPicker = (() => {
     catIndex = Number(btn.dataset.cat);
     if (KEY_CATALOG[catIndex][0] === "Media") pickMod = 0;
     renderKeys();
+    schedulePosition();
   });
 
   pop.querySelector(".hotkey-mod-row").addEventListener("click", event => {
     const btn = event.target.closest("[data-pick-mod]");
-    if (!btn) return;
+    if (!btn || !row) return;
     const bit = Number(btn.dataset.pickMod);
     pickMod ^= bit;
     syncModChips();
+    const binding = getRowBinding(row);
+    if (binding.type === 0 && binding.code) {
+      setRowBinding(row, {...binding, mod: pickMod});
+      log(`Set ${row.querySelector(".key-name").textContent}: ${shortcutText(getRowBinding(row))}`);
+    }
   });
 
   keys.addEventListener("click", event => {
@@ -377,10 +402,8 @@ const hotkeyPicker = (() => {
     }
   });
 
-  window.addEventListener("resize", () => {
-    if (pop.hidden || !row) return;
-    positionNear(row.querySelector(".hotkey-field"));
-  });
+  window.addEventListener("resize", schedulePosition);
+  document.addEventListener("scroll", schedulePosition, true);
 
   return {open, close, isOpen: () => !pop.hidden};
 })();
