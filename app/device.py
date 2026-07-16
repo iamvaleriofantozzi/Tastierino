@@ -37,13 +37,13 @@ class MacroPad:
 
     def exchange(self, command, payload=b"", timeout=1000):
         if hid is None:
-            raise DeviceError("Modulo hidapi non installato")
+            raise DeviceError("hidapi module not installed")
         devices = self.enumerate()
         if not devices:
-            raise DeviceError("Interfaccia Raw HID non rilevata")
+            raise DeviceError("Raw HID interface not found")
         packet = bytes([command]) + bytes(payload)
         if len(packet) > protocol.PACKET_SIZE:
-            raise DeviceError("Pacchetto HID troppo lungo")
+            raise DeviceError("HID packet too long")
         packet += bytes(protocol.PACKET_SIZE - len(packet))
         with self._lock:
             dev = hid.device()
@@ -51,7 +51,7 @@ class MacroPad:
                 dev.open_path(devices[0]["path"])
                 written = dev.write(bytes([0]) + packet)
                 if written <= 0:
-                    raise DeviceError("Scrittura HID fallita")
+                    raise DeviceError("HID write failed")
                 if sys.platform == "darwin":
                     response = b""
                     deadline = time.monotonic() + timeout / 1000
@@ -68,11 +68,11 @@ class MacroPad:
             finally:
                 dev.close()
         if len(response) != protocol.PACKET_SIZE:
-            raise DeviceError("Nessuna risposta completa dal tastierino")
+            raise DeviceError("No complete response from macropad")
         if response[0] != (command | protocol.RESPONSE):
-            raise DeviceError("Risposta HID non valida")
+            raise DeviceError("Invalid HID response")
         if response[1] != 0:
-            raise DeviceError(f"Il firmware ha rifiutato il comando (stato {response[1]})")
+            raise DeviceError(f"Firmware rejected command (status {response[1]})")
         return response
 
     def get_config(self):

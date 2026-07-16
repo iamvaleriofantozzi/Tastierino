@@ -1,69 +1,68 @@
-# Architettura del firmware
+# Firmware architecture
 
-Il firmware principale è `firmware/3keys_1knob.c`; i driver CH55x, USB, tastiera consumer, NeoPixel e timing sono in `firmware/include/`.
+The main firmware is `firmware/3keys_1knob.c`; the CH55x, USB, keyboard/consumer, NeoPixel and timing drivers are in `firmware/include/`.
 
-## Ciclo principale
+## Main loop
 
-All’avvio il firmware inizializza NeoPixel, controlla la richiesta manuale di bootloader, configura clock e USB, avvia il watchdog e carica la configurazione dalla Data Flash. Nel loop:
+At startup the firmware initializes the NeoPixel, checks for a manual bootloader request, configures the clock and USB, starts the watchdog and loads the configuration from Data Flash. In the loop it:
 
-1. legge i tre pulsanti e il click dell’encoder;
-2. decodifica una rotazione dell’encoder;
-3. gestisce un eventuale pacchetto Raw HID;
-4. aggiorna i tre LED;
-5. alimenta il watchdog.
+1. reads the three buttons and the encoder click;
+2. decodes an encoder rotation;
+3. handles any incoming Raw HID packet;
+4. updates the three LEDs;
+5. feeds the watchdog.
 
-## Pin logici
+## Logical pins
 
-| Funzione | Simbolo | Pin CH552 |
+| Function | Symbol | CH552 pin |
 |---|---|---|
-| Pulsante 1 | `PIN_KEY1` | P1.1, pin 9 |
-| Pulsante 2 | `PIN_KEY2` | P1.7, pin 5 |
-| Pulsante 3 | `PIN_KEY3` | P1.6, pin 4 |
-| Click encoder | `PIN_ENC_SW` | P3.3, pin 10 |
+| Button 1 | `PIN_KEY1` | P1.1, pin 9 |
+| Button 2 | `PIN_KEY2` | P1.7, pin 5 |
+| Button 3 | `PIN_KEY3` | P1.6, pin 4 |
+| Encoder click | `PIN_ENC_SW` | P3.3, pin 10 |
 | Encoder A | `PIN_ENC_A` | P3.1, pin 7 |
 | Encoder B | `PIN_ENC_B` | P3.0, pin 8 |
-| Dati NeoPixel | `PIN_NEO` | P3.4, pin 11 |
+| NeoPixel data | `PIN_NEO` | P3.4, pin 11 |
 
-## USB composito
+## Composite USB
 
-Il dispositivo usa VID:PID `1189:8890` e due interfacce:
+The device uses VID:PID `1189:8890` and two interfaces:
 
-- interfaccia 0: tastiera e controlli consumer HID;
-- interfaccia 1: Raw HID vendor-defined, usage page `0xFF60`, usage `0x61`.
+- interface 0: keyboard and consumer HID controls;
+- interface 1: vendor-defined Raw HID, usage page `0xFF60`, usage `0x61`.
 
-Endpoint 1 porta i report tastiera/media. Endpoint 2 è bidirezionale e trasporta pacchetti Raw HID da 32 byte. Su macOS il firmware accetta anche `SET_REPORT` sul control endpoint e conserva l’ultima risposta per la lettura come Feature report.
+Endpoint 1 carries keyboard/media reports. Endpoint 2 is bidirectional and carries 32-byte Raw HID packets. On macOS the firmware also accepts `SET_REPORT` on the control endpoint and keeps the last response available for reading as a Feature report.
 
-## Mappatura predefinita
+## Default mapping
 
-| Controllo | Tipo | HID code |
+| Control | Type | HID code |
 |---|---:|---:|
-| Pulsante 1 | Keyboard | `0x68` F13 |
-| Pulsante 2 | Keyboard | `0x69` F14 |
-| Pulsante 3 | Keyboard | `0x6A` F15 |
+| Button 1 | Keyboard | `0x68` F13 |
+| Button 2 | Keyboard | `0x69` F14 |
+| Button 3 | Keyboard | `0x6A` F15 |
 | Encoder click | Consumer | `0xE2` Mute |
-| Encoder orario | Consumer | `0xE9` Volume su |
-| Encoder antiorario | Consumer | `0xEA` Volume giù |
+| Encoder clockwise | Consumer | `0xE9` Volume Up |
+| Encoder counter-clockwise | Consumer | `0xEA` Volume Down |
 
-## Data Flash / EEPROM logica v2
+## Data Flash / EEPROM layout v2
 
-| Offset | Contenuto |
+| Offset | Content |
 |---:|---|
-| 0–1 | firma `0x4D 0x50` (`MP`) |
-| 2 | versione `2` |
-| 3 | checksum XOR |
-| 4–21 | sei record `[mod, type, code]` |
-| 22–30 | tre colori `[R,G,B]` |
-| 31–33 | luminosità LED 1, 2 e 3 |
+| 0–1 | signature `0x4D 0x50` (`MP`) |
+| 2 | version `2` |
+| 3 | XOR checksum |
+| 4–21 | six `[mod, type, code]` records |
+| 22–30 | three colors `[R,G,B]` |
+| 31–33 | brightness for LED 1, 2 and 3 |
 
-Il checksum è lo XOR della versione e dei byte 4–33. Se firma, versione o checksum non sono validi, vengono caricati i default. Una configurazione v1 da 32 byte viene migrata duplicando la luminosità globale sui tre LED.
+The checksum is the XOR of the version and bytes 4–33. If the signature, version or checksum are invalid, the defaults are loaded. A 32-byte v1 configuration is migrated by duplicating the global brightness onto the three LEDs.
 
-## Luminosità
+## Brightness
 
-Ogni componente colore viene scalata separatamente:
+Each color component is scaled independently:
 
 ```text
-uscita = colore × (luminosità + 1) / 256
+output = color × (brightness + 1) / 256
 ```
 
-La luminosità è quindi indipendente per ciascun LED senza cambiare il colore RGB memorizzato.
-
+Brightness is therefore independent for each LED, without changing the stored RGB color.

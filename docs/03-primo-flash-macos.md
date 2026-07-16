@@ -1,55 +1,54 @@
-# Primo flash da macOS
+# First flash from macOS
 
-Non serve una VM Windows. La compilazione avviene con SDCC e la programmazione con `wchisp` direttamente da macOS.
+No Windows VM is needed. Compilation is done with SDCC and programming with `wchisp`, directly from macOS.
 
-## Prerequisiti
+## Prerequisites
 
 ```sh
 brew install sdcc
 ```
 
-Installare inoltre `wchisp` e verificare che sia nel `PATH`:
+Also install `wchisp` and verify that it's in the `PATH`:
 
 ```sh
 wchisp --help
 ```
 
-La webapp cerca `wchisp` nel `PATH`. In alternativa si può impostare la variabile d’ambiente `WCHISP` con il percorso assoluto del binario.
+The webapp looks for `wchisp` in the `PATH`. Alternatively, you can set the `WCHISP` environment variable to the absolute path of the binary.
 
-## Compilazione
+## Compilation
 
-Dalla radice del progetto:
+From the project root:
 
 ```sh
 make -C firmware clean all
 ```
 
-Il linker è configurato con limite `0x3800`, cioè 14.336 byte. Il binario documentato in questo snapshot misura 6.204 byte e ha SHA-256:
+The linker is configured with a `0x3800` limit, i.e. 14,336 bytes. The binary documented in this snapshot is 6,204 bytes and has SHA-256:
 
 ```text
 2ceffde3bff9a2a5f6176ac49a287ac443a3d4d92bf7a9ab2a203ba3b365cf1b
 ```
 
-La dimensione dell’intervallo riportata dal programmatore può essere più grande del file utile perché l’immagine viene allineata o riempita durante la scrittura.
+The range size reported by the programmer can be larger than the actual file size because the image gets aligned or padded during writing.
 
-## Rilevamento e scrittura
+## Detection and flashing
 
-Entrare nel bootloader con la procedura descritta in [02-bootloader-e-resistenza.md](02-bootloader-e-resistenza.md), poi eseguire rapidamente:
+Enter the bootloader with the procedure described in [02-bootloader-e-resistenza.md](02-bootloader-e-resistenza.md), then quickly run:
 
 ```sh
 wchisp info
 wchisp flash firmware/3keys_1knob.bin
 ```
 
-Il dispositivo rilevato nelle prove era un `CH552` con bootloader `2.50`. Considerare il flash riuscito solo quando il tool termina senza errore e riporta la verifica positiva.
+The device detected during testing was a `CH552` with bootloader `2.50`. Consider the flash successful only when the tool exits without error and reports a positive verification.
 
-## Controllo successivo
+## Follow-up check
 
-Dopo il riavvio, macOS deve vedere:
+After rebooting, macOS should see:
 
 - VID:PID `1189:8890`;
-- interfaccia tastiera/consumer HID;
-- interfaccia Raw HID vendor-defined, usage page `0xFF60`.
+- keyboard/consumer HID interface;
+- vendor-defined Raw HID interface, usage page `0xFF60`.
 
-La webapp deve mostrare “connesso” e riuscire a leggere configurazione e illuminazione.
-
+The webapp should show "connected" and be able to read the configuration and lighting.

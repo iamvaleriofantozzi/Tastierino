@@ -1,19 +1,18 @@
-# Grafo statico del codice
+# Static code graph
 
-Aprire `graph.html` in un browser per esplorare il grafo interattivo. `graph.json` contiene i dati grezzi e `GRAPH_REPORT.md` il report automatico.
+Open `graph.html` in a browser to explore the interactive graph. `graph.json` contains the raw data and `GRAPH_REPORT.md` the automatic report.
 
-## Ambito
+## Scope
 
-Il corpus contiene soltanto sorgenti Python, JavaScript, C e header: 285 nodi, 416 archi e 18 comunità. I nodi più connessi sono `MacroPad`, `main()` e `raw_handle()` insieme alle strutture descrittore USB.
+The corpus contains only Python, JavaScript, C and header sources: 285 nodes, 416 edges and 18 communities. The most connected nodes are `MacroPad`, `main()` and `raw_handle()`, along with the USB descriptor structures.
 
-Le connessioni più utili emerse sono:
+The most useful connections found are:
 
-- i test `DeviceTests` usano l’API `MacroPad`;
-- `NEO_update()` attraversa il confine tra firmware applicativo e driver NeoPixel;
-- `raw_handle()` collega protocollo applicativo e trasporto HID;
-- `MacroPad` collega server web e dispositivo fisico.
+- the `DeviceTests` tests use the `MacroPad` API;
+- `NEO_update()` crosses the boundary between the application firmware and the NeoPixel driver;
+- `raw_handle()` links the application protocol and the HID transport;
+- `MacroPad` links the web server and the physical device.
 
-## Qualità e limiti
+## Quality and limitations
 
-L’estrazione riporta 91% di archi estratti e 9% inferiti, senza cicli di import. La diagnostica grezza ha però segnalato **40 archi con endpoint pendenti** e 103 nodi con al massimo una connessione. Sono soprattutto strutture USB generiche, primitive di timing generate e simboli esterni presenti negli header CH55x. Per questo il grafo va usato per orientarsi, mentre pinout e protocollo devono essere verificati sul codice e sul datasheet.
-
+The extraction reports 91% extracted edges and 9% inferred, with no import cycles. However, the raw diagnostics flagged **40 edges with dangling endpoints** and 103 nodes with at most one connection. These are mostly generic USB structures, generated timing primitives, and external symbols present in the CH55x headers. For this reason, the graph should be used for orientation, while the pinout and protocol must be verified against the code and the datasheet.

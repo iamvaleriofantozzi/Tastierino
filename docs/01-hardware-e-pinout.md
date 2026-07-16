@@ -1,38 +1,38 @@
-# Hardware, package e pinout
+# Hardware, package and pinout
 
-## Microcontrollore
+## Microcontroller
 
-Il componente è un **CH552G** in package SOP16. Il datasheet indica 16 KiB di ROM complessiva; con bootloader residente, l’area applicativa usata dal progetto è limitata a `0x3800` byte, cioè 14 KiB. La DataFlash disponibile è 128 byte.
+The component is a **CH552G** in a SOP16 package. The datasheet lists a total of 16 KiB of ROM; with the resident bootloader, the application area used by the project is limited to `0x3800` bytes, i.e. 14 KiB. The available DataFlash is 128 bytes.
 
-## Orientamento corretto
+## Correct orientation
 
-Individuare prima la tacca o il punto che marca il pin 1. La numerazione del SOP procede in senso antiorario vista dall’alto. Non usare descrizioni come “secondo piedino inferiore da sinistra” senza aver fissato l’orientamento.
+First locate the notch or dot that marks pin 1. SOP numbering proceeds counter-clockwise when viewed from above. Do not use descriptions such as "second pin from the bottom on the left" without first fixing the orientation.
 
-## Pin CH552G rilevanti
+## Relevant CH552G pins
 
-| Pin fisico | Segnale | Uso nel progetto |
+| Physical pin | Signal | Use in the project |
 |---:|---|---|
-| 3 | `P1.5` | vecchio metodo di ingresso bootloader citato online; non usato dal firmware finale |
-| 4 | `P1.6` | pulsante 3 (`PIN_KEY3`) |
-| 5 | `P1.7` | pulsante 2 (`PIN_KEY2`) |
+| 3 | `P1.5` | old bootloader entry method cited online; not used by the final firmware |
+| 4 | `P1.6` | button 3 (`PIN_KEY3`) |
+| 5 | `P1.7` | button 2 (`PIN_KEY2`) |
 | 7 | `P3.1` | encoder A (`PIN_ENC_A`) |
 | 8 | `P3.0` | encoder B (`PIN_ENC_B`) |
-| 9 | `P1.1` | pulsante 1 (`PIN_KEY1`) |
-| 10 | `P3.3` | click encoder (`PIN_ENC_SW`) |
-| 11 | `P3.4` | linea dati NeoPixel (`PIN_NEO`) |
-| 12 | `P3.6/UDP` | USB D+ e metodo bootloader tramite pull-up a V33 |
+| 9 | `P1.1` | button 1 (`PIN_KEY1`) |
+| 10 | `P3.3` | encoder click (`PIN_ENC_SW`) |
+| 11 | `P3.4` | NeoPixel data line (`PIN_NEO`) |
+| 12 | `P3.6/UDP` | USB D+ and bootloader entry method via pull-up to V33 |
 | 13 | `P3.7/UDM` | USB D− |
-| 14 | `GND/VSS` | massa |
-| 15 | `VCC/VDD` | alimentazione |
-| 16 | `V33` | uscita regolatore USB 3,3 V / riferimento bootloader |
+| 14 | `GND/VSS` | ground |
+| 15 | `VCC/VDD` | power supply |
+| 16 | `V33` | USB regulator 3.3 V output / bootloader reference |
 
-I mapping dei tasti e dell’encoder derivano dal firmware funzionante e dai test fisici; il pinout del package deriva dal datasheet.
+The key and encoder mappings come from the working firmware and physical testing; the package pinout comes from the datasheet.
 
-## Catena LED
+## LED chain
 
-I tre LED sono pilotati come NeoPixel/WS2812 compatibili da una singola linea `P3.4`. Il formato colore è configurato come **GRB**. L’ordine logico nel firmware è LED 1, LED 2, LED 3; ogni elemento ha RGB e luminosità 8 bit indipendente.
+The three LEDs are driven as NeoPixel/WS2812-compatible devices from a single `P3.4` line. The color format is configured as **GRB**. The logical order in the firmware is LED 1, LED 2, LED 3; each element has an independent RGB value and 8-bit brightness.
 
-La luminosità non usa PWM separato: il firmware scala ciascun canale con:
+Brightness does not use separate PWM: the firmware scales each channel with:
 
 ```c
 scaled = (channel * (brightness + 1)) >> 8;
@@ -42,20 +42,19 @@ scaled = (channel * (brightness + 1)) >> 8;
 
 - D+ = `P3.6/UDP`, pin 12.
 - D− = `P3.7/UDM`, pin 13.
-- Il datasheet avverte di non inserire resistenze **in serie** su P3.6/P3.7 quando usati per USB.
-- La resistenza da 10 kΩ della procedura iniziale è un collegamento temporaneo di pull-up tra P3.6 e V33, non una resistenza in serie sul cavo dati.
+- The datasheet warns against inserting resistors **in series** on P3.6/P3.7 when used for USB.
+- The 10 kΩ resistor from the initial procedure is a temporary pull-up connection between P3.6 and V33, not a series resistor on the data line.
 
-## Identità verificata
+## Verified identity
 
-| Campo | Valore |
+| Field | Value |
 |---|---|
 | MCU | CH552, ID `0x5211` |
 | UID | `57-07-60-BE-00-00-00-00` |
 | Bootloader | `02.50` |
-| Code Flash applicativa | 14 KiB |
-| Data EEPROM | 128 byte |
-| VID:PID applicazione | `1189:8890` |
-| Produttore USB | `OpenMacroPad` |
-| Prodotto USB | `CH552 RGB MacroPad` |
-| Serial USB | `CH552xHID` |
-
+| Application code flash | 14 KiB |
+| Data EEPROM | 128 bytes |
+| Application VID:PID | `1189:8890` |
+| USB manufacturer | `OpenMacroPad` |
+| USB product | `CH552 RGB MacroPad` |
+| USB serial | `CH552xHID` |

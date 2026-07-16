@@ -13,4 +13,4 @@ PING = 0x07
 GET_LIGHTING = 0x08
 RESPONSE = 0x80
 
-CONTROL_NAMES = ("Pulsante 1", "Pulsante 2", "Pulsante 3", "Encoder click", "Encoder orario", "Encoder antiorario")
+CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")

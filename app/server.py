@@ -60,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.headers.get("X-Macropad-Client") != "1":
-            self.send_json(403, {"error": "Richiesta locale non autorizzata"})
+            self.send_json(403, {"error": "Unauthorized local request"})
             return
         path = urlparse(self.path).path
         try:
@@ -68,24 +68,24 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.read_json()
                 colors = data["colors"]
                 if len(colors) != 3 or any(len(c) != 3 or any(not isinstance(x, int) or x < 0 or x > 255 for x in c) for c in colors):
-                    raise ValueError("Colori RGB non validi")
+                    raise ValueError("Invalid RGB colors")
                 DEVICE.set_rgb(colors)
                 if "brightness" in data:
                     values = data["brightness"]
                     if isinstance(values, int):
                         values = [values] * 3
                     if len(values) != 3 or any(not isinstance(value, int) or not 0 <= value <= 255 for value in values):
-                        raise ValueError("Luminosità non valida")
+                        raise ValueError("Invalid brightness")
                     DEVICE.set_brightness(values)
                 self.send_json(200, {"ok": True})
             elif path == "/api/keymap":
                 data = self.read_json()
                 keys = data["keys"]
                 if len(keys) != 6:
-                    raise ValueError("Servono sei mappature")
+                    raise ValueError("Six mappings required")
                 for key in keys:
                     if key["type"] not in (0, 1) or any(not 0 <= int(key[x]) <= 255 for x in ("mod", "code")):
-                        raise ValueError("Mappatura non valida")
+                        raise ValueError("Invalid mapping")
                 DEVICE.set_keymap(keys)
                 self.send_json(200, {"ok": True})
             elif path == "/api/save":
@@ -102,7 +102,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/flash":
                 data = self.read_json()
                 if data.get("confirm") is not True:
-                    raise ValueError("Conferma flash mancante")
+                    raise ValueError("Flash confirmation missing")
                 source = firmware.UPLOAD_BIN if data.get("uploaded") else firmware.DEFAULT_BIN
                 if data.get("enter_bootloader"):
                     try:
@@ -112,7 +112,7 @@ class Handler(BaseHTTPRequestHandler):
                         pass
                 self.send_json(200, firmware.flash(source))
             else:
-                self.send_json(404, {"error": "Endpoint sconosciuto"})
+                self.send_json(404, {"error": "Unknown endpoint"})
         except (DeviceError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             self.send_json(400, {"error": str(exc)})
         except Exception as exc:

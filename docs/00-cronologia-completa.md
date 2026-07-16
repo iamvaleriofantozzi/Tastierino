@@ -1,92 +1,91 @@
-# Cronologia completa del lavoro
+# Complete work timeline
 
-## 1. Identificazione del dispositivo
+## 1. Device identification
 
-Il dispositivo è un macropad USB economico venduto come tastiera meccanica RGB programmabile con tre tasti e encoder. Il materiale del venditore comprendeva un PDF e una cartella Google Drive con software proprietario. Su richiesta, il software non è stato installato: è stato trattato solo come materiale da analizzare.
+The device is a cheap USB macropad sold as a programmable RGB mechanical keyboard with three keys and an encoder. The vendor material included a PDF and a Google Drive folder with proprietary software. As requested, the software was not installed: it was only treated as material for analysis.
 
-L’ispezione USB e la fotografia della scheda hanno portato all’identificazione del microcontrollore **CH552G**, MCU 8051 con USB full-speed, 16 KiB di ROM, 128 byte di DataFlash/EEPROM e bootloader ISP integrato.
+USB inspection and board photography led to identifying the microcontroller as a **CH552G**, an 8051 MCU with full-speed USB, 16 KiB of ROM, 128 bytes of DataFlash/EEPROM, and a built-in ISP bootloader.
 
-## 2. Primo tentativo di controllo LED
+## 2. First LED control attempt
 
-Il firmware originale non esponeva un protocollo documentato sufficiente per cambiare stabilmente il colore. Diversi tentativi HID non produssero la variazione richiesta. I LED erano fisicamente RGB: alla pressione dei tre tasti apparivano impulsi blu, verde e rosso, quindi catena NeoPixel, alimentazione e collegamento dati erano funzionanti.
+The original firmware did not expose a documented protocol sufficient to reliably change the color. Several HID attempts did not produce the desired change. The LEDs were physically RGB: pressing the three keys produced blue, green and red pulses, so the NeoPixel chain, power and data connection were working.
 
-## 3. Ricerca del bootloader
+## 3. Bootloader research
 
-La ricerca sul progetto Hackaday evidenziò due metodi storici:
+Research on the Hackaday project revealed two historical methods:
 
-- bootloader/IDE più vecchi: `P1.5` portato a GND;
-- metodo usato dalle versioni più recenti di ch55xduino: `P3.6` portato a `3V3/V33`.
+- older bootloader/IDE: `P1.5` pulled to GND;
+- method used by more recent ch55xduino versions: `P3.6` pulled to `3V3/V33`.
 
-Questa differenza spiegava perché indicazioni trovate online sembravano contraddirsi. Il dispositivo reale riportò successivamente nel registro di configurazione del bootloader `DOWNLOAD_CFG ... P4.6 / P1.5 / P3.6 (Default set)`, con bootloader versione **2.50**.
+This difference explained why guidance found online seemed contradictory. The actual device later reported, in the bootloader configuration register, `DOWNLOAD_CFG ... P4.6 / P1.5 / P3.6 (Default set)`, with bootloader version **2.50**.
 
-## 4. Correzione del pin nella fotografia
+## 4. Pin correction in the photograph
 
-Durante l’analisi fotografica fu inizialmente usata la descrizione “terzo piedino inferiore da sinistra”, poi corretta. Per il package **CH552G SOP16**, con orientamento determinato da tacca/punto:
+During the photographic analysis, the description "third pin from the bottom on the left" was initially used, then corrected. For the **CH552G SOP16** package, with orientation determined by the notch/dot:
 
-- `P1.5` = pin fisico **3**;
-- `P3.6/UDP` = pin fisico **12**;
-- `GND` = pin fisico **14**;
-- `V33` = pin fisico **16**.
+- `P1.5` = physical pin **3**;
+- `P3.6/UDP` = physical pin **12**;
+- `GND` = physical pin **14**;
+- `V33` = physical pin **16**.
 
-La posizione “secondo/terzo da sinistra” non deve essere usata senza specificare l’orientamento del chip.
+The "second/third from the left" position must not be used without specifying the chip orientation.
 
-## 5. Resistenza e primo accesso ISP
+## 5. Resistor and first ISP access
 
-Si valutò inizialmente 1 kΩ, ma la procedura effettivamente adottata usò **10 kΩ** tra `P3.6/UDP` e `V33`. La resistenza veniva mantenuta durante reset, rilevamento e flash. I LED che si accendevano e poi si spegnevano erano un indizio di reset; il riconoscimento certo arrivava esclusivamente da `wchisp info` con VID:PID bootloader WCH.
+A 1 kΩ resistor was initially considered, but the procedure actually adopted used **10 kΩ** between `P3.6/UDP` and `V33`. The resistor was kept in place during reset, detection and flashing. LEDs turning on and then off were a hint of reset; certain recognition only came from `wchisp info` with the WCH bootloader VID:PID.
 
-Non fu ottenuto un dump affidabile del firmware originale prima della sovrascrittura. L’assenza di protezione codice letta più tardi non equivale a disporre automaticamente di una procedura di backup verificata.
+A reliable dump of the original firmware was not obtained before overwriting it. The absence of code protection, discovered later, does not automatically mean a verified backup procedure existed.
 
-## 6. Primo firmware personalizzato
+## 6. First custom firmware
 
-Il primo binario personalizzato si enumerò come `1189:8890`, ma leggeva direttamente byte EEPROM senza magic/versione/checksum. Dati residui casuali venivano quindi interpretati come keymap:
+The first custom binary enumerated as `1189:8890`, but read EEPROM bytes directly without magic number/version/checksum. Random leftover data was therefore interpreted as a keymap:
 
-- encoder antiorario produceva `Y`;
-- encoder orario e click non producevano eventi utili;
-- i tre pulsanti non avevano una mappatura comprensibile;
-- gli impulsi LED dimostravano però che i GPIO e la catena RGB erano corretti.
+- counter-clockwise encoder rotation produced `Y`;
+- clockwise encoder rotation and click produced no useful events;
+- the three buttons had no understandable mapping;
+- the LED pulses, however, demonstrated that the GPIOs and the RGB chain were correct.
 
-Questa osservazione portò a ridisegnare il formato EEPROM.
+This observation led to redesigning the EEPROM format.
 
-## 7. Toolchain nativa macOS
+## 7. Native macOS toolchain
 
-È stato installato SDCC 4.6 tramite Homebrew. Il progetto viene compilato con `sdcc`, `packihx` e `sdobjcopy`. Il flash è eseguito dal binario nativo `wchisp`; non è necessaria una VM Windows.
+SDCC 4.6 was installed via Homebrew. The project is compiled with `sdcc`, `packihx` and `sdobjcopy`. Flashing is performed with the native `wchisp` binary; no Windows VM is needed.
 
-## 8. Evoluzione USB/HID
+## 8. USB/HID evolution
 
-L’implementazione Raw HID richiese più correzioni successive:
+The Raw HID implementation required several successive fixes:
 
-1. endpoint EP2 portato da 16 a 32 byte;
-2. aggiunta direzione IN oltre a OUT;
-3. correzione del descrittore di configurazione a due endpoint;
-4. scelta del report descriptor tramite `wIndexL` (numero interfaccia), non `wValueL`;
-5. flag HID Input/Output corretti come Data/Variable/Absolute;
-6. supporto `SET_REPORT` di controllo usato da macOS;
-7. aggiunta Feature Report per una risposta affidabile tramite IOHID.
+1. EP2 endpoint size increased from 16 to 32 bytes;
+2. added an IN direction in addition to OUT;
+3. fixed the two-endpoint configuration descriptor;
+4. selected the report descriptor via `wIndexL` (interface number), not `wValueL`;
+5. corrected HID Input/Output flags as Data/Variable/Absolute;
+6. added support for the `SET_REPORT` control request used by macOS;
+7. added a Feature Report for a reliable response via IOHID.
 
-Il trasporto macOS finale usa una scrittura HID da 33 byte (Report ID zero + 32 byte) e una lettura Feature Report da 33 byte.
+The final macOS transport uses a 33-byte HID write (zero Report ID + 32 data bytes) and a 33-byte Feature Report read.
 
-## 9. Webapp locale
+## 9. Local webapp
 
-È stata realizzata una webapp servita solo su `127.0.0.1:8765`, con:
+A webapp was built, served only on `127.0.0.1:8765`, with:
 
-- stato del dispositivo;
-- selettori colore per i tre LED;
-- luminosità indipendente per ogni LED;
-- keymap dei sei ingressi;
-- salvataggio EEPROM;
-- compilazione firmware;
-- caricamento `.bin` con verifica dimensione/SHA-256;
-- ingresso bootloader software;
-- flash e verifica con log.
+- device status;
+- color pickers for the three LEDs;
+- independent brightness for each LED;
+- keymap for the six inputs;
+- EEPROM save;
+- firmware build;
+- `.bin` upload with size/SHA-256 verification;
+- software bootloader entry;
+- flashing and verification with logging.
 
-## 10. Stato finale
+## 10. Final status
 
-Il firmware finale è stato scritto con `Verify OK`. Sono stati verificati:
+The final firmware was written with a `Verify OK` result. The following were verified:
 
-- interfaccia Raw HID visibile su macOS;
-- lettura e scrittura dei colori;
-- luminosità indipendenti `[51, 140, 255]`;
-- persistenza dopo salvataggio EEPROM e riavvio;
-- ingresso bootloader software e ritorno all’applicazione;
-- build firmware e quattro test automatici passanti.
-
+- Raw HID interface visible on macOS;
+- reading and writing colors;
+- independent brightness levels `[51, 140, 255]`;
+- persistence after EEPROM save and reboot;
+- software bootloader entry and return to the application;
+- firmware build and four passing automated tests.

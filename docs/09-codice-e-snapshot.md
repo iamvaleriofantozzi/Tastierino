@@ -1,18 +1,18 @@
-# Codice e snapshot
+# Code and snapshot
 
-## Albero dei sorgenti
+## Source tree
 
 ```text
-app/                 server Python, HID e interfaccia web
-firmware/            sorgente CH552, driver, Makefile e binari
-tests/               test unitari
-README.md            avvio rapido
-requirements.txt     dipendenze Python
-start.command        launcher macOS
-docs/                documentazione completa
+app/                 Python server, HID and web interface
+firmware/            CH552 source, drivers, Makefile and binaries
+tests/               unit tests
+README.md            quick start
+requirements.txt     Python dependencies
+start.command        macOS launcher
+docs/                complete documentation
 ```
 
-Gli archivi `.zip` non sono versionati (`*.zip` in `.gitignore`). Uno snapshot locale si può generare dalla radice del repo, escludendo ambienti e cache:
+`.zip` archives are not version-controlled (`*.zip` in `.gitignore`). A local snapshot can be generated from the repo root, excluding environments and caches:
 
 ```sh
 zip -r docs/source-snapshot-$(date +%F).zip \
@@ -22,7 +22,7 @@ zip -r docs/source-snapshot-$(date +%F).zip \
      'firmware/*.lk' 'firmware/*.ihx' 'firmware/*.mem' 'firmware/*.adb'
 ```
 
-## Riproduzione
+## Reproduction
 
 ```sh
 brew install sdcc
@@ -32,6 +32,6 @@ make -C firmware clean all
 python3 -m unittest discover -s tests
 ```
 
-## Grafo statico
+## Static graph
 
-`graph/graph.html` permette di esplorare simboli e dipendenze. Il corpus del grafo è volutamente limitato ai sorgenti Python, JavaScript e C/header, così la documentazione non altera l’analisi del codice.
+`graph/graph.html` lets you explore symbols and dependencies. The graph corpus is deliberately limited to Python, JavaScript and C/header sources, so the documentation itself doesn't affect the code analysis.

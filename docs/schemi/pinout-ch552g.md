@@ -1,6 +1,6 @@
-# Pinout CH552G usato nel progetto
+# CH552G pinout used in the project
 
-Vista dall’alto del package SOP16, tacca in alto:
+Top view of the SOP16 package, notch at the top:
 
 ```text
                  ┌───∪───┐
@@ -15,5 +15,4 @@ Vista dall’alto del package SOP16, tacca in alto:
                  └───────┘
 ```
 
-Il pin fisico 3 è `P1.5`. Il pin fisico 12 è `P3.6/UDP`; il pin 16 è `V33`. Fare sempre riferimento alla tacca del package e verificare l’orientamento reale della foto prima di saldare.
-
+Physical pin 3 is `P1.5`. Physical pin 12 is `P3.6/UDP`; pin 16 is `V33`. Always refer to the package notch and verify the actual orientation in the photo before soldering.

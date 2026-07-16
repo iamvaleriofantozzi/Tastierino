@@ -1,49 +1,48 @@
-# Bootloader e resistenza da 10 kΩ
+# Bootloader and the 10 kΩ resistor
 
-## Conclusione verificata
+## Verified conclusion
 
-Per il primo accesso al bootloader WCH è stato usato un pull-up **temporaneo da 10 kΩ** tra:
+For first access to the WCH bootloader, a **temporary 10 kΩ** pull-up was used between:
 
-- `P3.6 / UDP`, piedino fisico 12 del CH552G;
-- `V33`, piedino fisico 16.
+- `P3.6 / UDP`, physical pin 12 of the CH552G;
+- `V33`, physical pin 16.
 
-La resistenza non va inserita in serie sulla linea USB. Il datasheet sconsiglia espressamente resistenze in serie su `UDM` e `UDP` perché il CH552 integra già quelle necessarie.
+The resistor must not be inserted in series on the USB line. The datasheet explicitly advises against series resistors on `UDM` and `UDP`, because the CH552 already integrates the ones it needs.
 
-## Perché non P1.5
+## Why not P1.5
 
-Esistono due procedure, riferite a bootloader/configurazioni differenti:
+There are two procedures, referring to different bootloaders/configurations:
 
-- metodo storico: `P1.5` a GND durante il reset;
-- metodo più recente adottato da ch55xduino: `P3.6` a `3V3/V33` durante il reset.
+- historical method: `P1.5` to GND during reset;
+- more recent method adopted by ch55xduino: `P3.6` to `3V3/V33` during reset.
 
-Il progetto Hackaday citato durante l’analisi descrive proprio questo cambiamento. Su questo esemplare la strada che ha consentito di proseguire è stata `P3.6 → 10 kΩ → V33`. `P1.5` è il pin fisico 3; non è il “secondo pin inferiore da sinistra”.
+The Hackaday project cited during the analysis describes exactly this change. On this unit, the approach that allowed progress was `P3.6 → 10 kΩ → V33`. `P1.5` is physical pin 3; it is not the "second pin from the bottom on the left".
 
-## Procedura del primo flash
+## First flash procedure
 
-1. Scollegare USB e lavorare a scheda non alimentata.
-2. Collegare una resistenza da 10 kΩ tra pin 12 (`P3.6/UDP`) e pin 16 (`V33`).
-3. Controllare con lente o multimetro che non esistano ponti verso pin adiacenti.
-4. Ricollegare USB o eseguire il reset della board.
-5. Verificare subito con `wchisp info`: il bootloader resta disponibile per una finestra breve, circa dieci secondi.
-6. Se il dispositivo è riconosciuto come CH552 bootloader, eseguire il flash e attendere `Verify OK`.
-7. Scollegare USB e rimuovere il collegamento temporaneo, salvo che serva per un’ulteriore sessione di recupero.
+1. Disconnect USB and work with the board unpowered.
+2. Connect a 10 kΩ resistor between pin 12 (`P3.6/UDP`) and pin 16 (`V33`).
+3. Check with a magnifier or multimeter that there are no bridges to adjacent pins.
+4. Reconnect USB or reset the board.
+5. Verify immediately with `wchisp info`: the bootloader stays available for a short window, about ten seconds.
+6. If the device is recognized as a CH552 bootloader, proceed with flashing and wait for `Verify OK`.
+7. Disconnect USB and remove the temporary connection, unless it's needed for another recovery session.
 
-L’accensione e lo spegnimento dei LED è un indizio, non una prova dell’ingresso nel bootloader. La prova è l’identificazione positiva di `wchisp`.
+LEDs turning on and off is a hint, not proof, of entering the bootloader. The proof is positive identification by `wchisp`.
 
-## Dopo il primo firmware personalizzato
+## After the first custom firmware
 
-Il firmware nuovo offre due vie più semplici:
+The new firmware offers two simpler paths:
 
-- comando Raw HID `ENTER_BOOTLOADER` (`0x06`), usato dalla webapp;
-- avvio con `PIN_KEY1` premuto; i LED diventano bianchi prima del salto al bootloader.
+- Raw HID command `ENTER_BOOTLOADER` (`0x06`), used by the webapp;
+- startup with `PIN_KEY1` held down; the LEDs turn white before jumping to the bootloader.
 
-Poiché l’ordine fisico dei pulsanti era inizialmente incerto, durante il recupero sono stati tenuti premuti tutti e tre i pulsanti alla riconnessione. Questo garantisce che anche `PIN_KEY1` sia premuto. Nel codice è comunque solo `PIN_KEY1` a comandare il salto.
+Since the physical order of the buttons was initially uncertain, all three buttons were held down on reconnection during recovery. This guarantees that `PIN_KEY1` is also pressed. In the code, however, only `PIN_KEY1` triggers the jump.
 
-## Precauzioni
+## Precautions
 
-- Non saldare o spostare la resistenza a scheda alimentata.
-- Non cortocircuitare `V33` verso GND.
-- Non applicare 5 V direttamente a `P3.6`.
-- Non interrompere USB durante scrittura o verifica.
-- Prima di ogni flash confermare MCU e file binario.
-
+- Do not solder or move the resistor while the board is powered.
+- Do not short `V33` to GND.
+- Do not apply 5 V directly to `P3.6`.
+- Do not interrupt USB during writing or verification.
+- Confirm the MCU and binary file before every flash.

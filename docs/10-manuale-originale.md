@@ -1,25 +1,25 @@
-# Manuale originale del venditore
+# Original vendor manual
 
-Il PDF originale è conservato in [riferimenti/manuale-venditore.pdf](riferimenti/manuale-venditore.pdf). È una singola pagina verticale molto lunga, realizzata come composizione grafica; l’estrazione automatica del testo perde spazi, ma il rendering visivo è leggibile.
+The original PDF is stored at [riferimenti/manuale-venditore.pdf](riferimenti/manuale-venditore.pdf). It's a single, very long vertical page, laid out as a graphic composition; automatic text extraction loses spacing, but the visual rendering is readable.
 
-SHA-256 del PDF conservato: `addc673d8d93239511f18185cb63f3cd47e4f333209023c4c926fd53f450856e`.
+SHA-256 of the stored PDF: `addc673d8d93239511f18185cb63f3cd47e4f333209023c4c926fd53f450856e`.
 
-## Contenuto
+## Content
 
-Il manuale conferma:
+The manual confirms:
 
-- tre tasti indipendenti, dichiarati come non premibili simultaneamente nel software originale;
-- encoder con rotazione sinistra, rotazione destra e pressione;
-- un solo layer;
-- configurazione delle combinazioni di tasti e dei comandi multimedia;
-- download della configurazione al dispositivo tramite software Windows;
-- tre modalità LED: `0`, `1` e `2`;
-- possibilità di spegnere o accendere la retroilluminazione con una voce “LED mode”.
+- three independent keys, stated as not pressable simultaneously in the original software;
+- an encoder with left rotation, right rotation and press;
+- a single layer;
+- configuration of key combinations and media commands;
+- downloading the configuration to the device via Windows software;
+- three LED modes: `0`, `1` and `2`;
+- the ability to turn the backlight on or off with a "LED mode" entry.
 
-Le schermate mostrano un’applicazione denominata `Mini Keyboard`/software analogo con controlli `KEY1`, `K1 Left`, `K1 Centre`, `K1 Right`, modificatori, keycode, multimedia e pulsante `Download`.
+The screenshots show an application called `Mini Keyboard`/similar software with controls `KEY1`, `K1 Left`, `K1 Centre`, `K1 Right`, modifiers, keycodes, media controls, and a `Download` button.
 
-## Limiti rispetto al firmware nuovo
+## Limitations compared to the new firmware
 
-Il manuale descrive effetti LED globali predefiniti, non un protocollo per impostare da Python colore e luminosità di ogni singolo LED. Il firmware e la webapp realizzati in questo progetto sostituiscono quel comportamento con controllo Raw HID documentato.
+The manual describes predefined global LED effects, not a protocol for setting each LED's color and brightness individually from Python. The firmware and webapp built in this project replace that behavior with the documented Raw HID control.
 
-Il PDF include un link di download del venditore e istruzioni per disattivare l’antivirus al primo avvio. Il software originale non è stato installato, come richiesto; è stato considerato materiale non fidato e analizzato soltanto tramite documentazione/file.
+The PDF includes a vendor download link and instructions to disable antivirus on first launch. The original software was not installed, as requested; it was treated as untrusted material and analyzed only through its documentation/files.

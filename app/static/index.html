@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,45 +11,45 @@
 <body>
   <div class="shell">
     <header>
-      <div><p class="eyebrow">OPEN MACROPAD</p><h1>CH552 Control Center</h1><p class="subtitle">LED, keymap e firmware. Tutto locale sul Mac.</p></div>
-      <div id="status" class="status"><span class="dot"></span><span>Verifica…</span></div>
+      <div><p class="eyebrow">OPEN MACROPAD</p><h1>CH552 Control Center</h1><p class="subtitle">LEDs, keymap, and firmware. All local on your Mac.</p></div>
+      <div id="status" class="status"><span class="dot"></span><span>Checking…</span></div>
     </header>
     <main>
       <section class="card lighting">
-        <div class="section-title"><div><span class="step">01</span><h2>Illuminazione</h2></div><button id="lightsOff" class="ghost">Spegni tutti</button></div>
-        <div class="keypad-preview" aria-label="Anteprima tastierino">
+        <div class="section-title"><div><span class="step">01</span><h2>Lighting</h2></div><button id="lightsOff" class="ghost">Turn all off</button></div>
+        <div class="keypad-preview" aria-label="Macropad preview">
           <div class="knob"><span></span></div>
-          <label class="key-preview"><input type="color" value="#0050ff" data-color="0"><span>Tasto 1</span></label>
-          <label class="key-preview"><input type="color" value="#00ff50" data-color="1"><span>Tasto 2</span></label>
-          <label class="key-preview"><input type="color" value="#ff1400" data-color="2"><span>Tasto 3</span></label>
+          <label class="key-preview"><input type="color" value="#0050ff" data-color="0"><span>Key 1</span></label>
+          <label class="key-preview"><input type="color" value="#00ff50" data-color="1"><span>Key 2</span></label>
+          <label class="key-preview"><input type="color" value="#ff1400" data-color="2"><span>Key 3</span></label>
         </div>
-        <div class="led-levels" aria-label="Luminosità individuale dei LED">
+        <div class="led-levels" aria-label="Per-LED brightness">
           <label><span>LED 1 <output data-brightness-value="0">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="0"></label>
           <label><span>LED 2 <output data-brightness-value="1">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="1"></label>
           <label><span>LED 3 <output data-brightness-value="2">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="2"></label>
         </div>
-        <p class="hint">Le modifiche colore sono inviate in tempo reale, senza riflashare.</p>
+        <p class="hint">Color changes are sent in real time — no reflash needed.</p>
       </section>
       <section class="card keymap">
-        <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div><button id="applyKeys" class="secondary">Applica</button></div>
+        <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div><button id="applyKeys" class="secondary">Apply</button></div>
         <div id="keyRows" class="key-rows"></div>
-        <div class="save-row"><p><strong>Applica</strong> è temporaneo. <strong>Salva in memoria</strong> conserva LED e tasti dopo lo scollegamento.</p><button id="saveConfig" class="primary">Salva in memoria</button></div>
+        <div class="save-row"><p><strong>Apply</strong> is temporary. <strong>Save to memory</strong> keeps LEDs and keys after unplug.</p><button id="saveConfig" class="primary">Save to memory</button></div>
       </section>
       <section class="card firmware-card">
         <div class="section-title"><div><span class="step warning-step">03</span><h2>Firmware</h2></div></div>
         <div class="firmware-grid">
-          <div><p class="label">Firmware del progetto</p><p id="firmwareInfo" class="mono">Caricamento…</p><button id="buildFirmware" class="secondary">Compila firmware</button></div>
-          <div><label class="label" for="firmwareFile">Oppure file .bin</label><input id="firmwareFile" type="file" accept=".bin,application/octet-stream"><p id="uploadInfo" class="mono muted">Nessun file selezionato</p></div>
+          <div><p class="label">Project firmware</p><p id="firmwareInfo" class="mono">Loading…</p><button id="buildFirmware" class="secondary">Build firmware</button></div>
+          <div><label class="label" for="firmwareFile">Or .bin file</label><input id="firmwareFile" type="file" accept=".bin,application/octet-stream"><p id="uploadInfo" class="mono muted">No file selected</p></div>
         </div>
-        <div class="danger-zone"><div><strong>Scrittura firmware</strong><p>Il dispositivo si riavvierà. Non scollegarlo durante la verifica.</p></div><button id="flashFirmware" class="danger">Avvia flash…</button></div>
+        <div class="danger-zone"><div><strong>Write firmware</strong><p>The device will reboot. Do not unplug during verify.</p></div><button id="flashFirmware" class="danger">Start flash…</button></div>
       </section>
       <section class="card console-card">
-        <div class="section-title"><div><span class="step">04</span><h2>Log</h2></div><button id="clearLog" class="ghost">Pulisci</button></div>
-        <pre id="log" aria-live="polite">Control Center pronto.</pre>
+        <div class="section-title"><div><span class="step">04</span><h2>Log</h2></div><button id="clearLog" class="ghost">Clear</button></div>
+        <pre id="log" aria-live="polite">Control Center ready.</pre>
       </section>
     </main>
   </div>
-  <dialog id="flashDialog"><form method="dialog"><p class="eyebrow danger-text">OPERAZIONE SENSIBILE</p><h2>Confermi il flash?</h2><p>Verrà scritto il firmware selezionato e verificato. Non scollegare il cavo USB finché il log non mostra il completamento.</p><div class="dialog-actions"><button value="cancel" class="ghost">Annulla</button><button id="confirmFlash" value="default" class="danger">Scrivi e verifica</button></div></form></dialog>
+  <dialog id="flashDialog"><form method="dialog"><p class="eyebrow danger-text">SENSITIVE OPERATION</p><h2>Confirm flash?</h2><p>The selected firmware will be written and verified. Do not unplug the USB cable until the log shows completion.</p><div class="dialog-actions"><button value="cancel" class="ghost">Cancel</button><button id="confirmFlash" value="default" class="danger">Write and verify</button></div></form></dialog>
   <script src="/app.js"></script>
 </body>
 </html>

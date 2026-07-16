@@ -1,16 +1,16 @@
-# Schemi del sistema
+# System diagrams
 
-## Architettura
+## Architecture
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#111827","primaryTextColor":"#f8fafc","primaryBorderColor":"#9ca9bc","lineColor":"#9ca9bc","secondaryColor":"#0a0f1c","tertiaryColor":"#163a2a","fontFamily":"-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"}}}%%
 flowchart LR
-    UI["Webapp"] --> HTTP["Server locale"]
+    UI["Webapp"] --> HTTP["Local server"]
     HTTP --> API["MacroPad API"]
     API --> IO["macOS IOHID"]
     IO --> RAW["Raw HID 32 B"]
     RAW --> FW["CH552 firmware"]
-    FW --> OUT["LED e keymap"]
+    FW --> OUT["LEDs and keymap"]
     FW --> MEM[("Data Flash")]
     classDef focal fill:#163a2a,stroke:#31dc77,color:#f8fafc,stroke-width:2px
     classDef backend fill:#111827,stroke:#9ca9bc,color:#f8fafc
@@ -21,19 +21,19 @@ flowchart LR
     linkStyle default stroke:#57a6ff,color:#57a6ff
 ```
 
-## Primo flash hardware
+## First hardware flash
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#111827","primaryTextColor":"#f8fafc","primaryBorderColor":"#9ca9bc","lineColor":"#9ca9bc","secondaryColor":"#0a0f1c","tertiaryColor":"#163a2a","fontFamily":"-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"}}}%%
 flowchart TD
-    OFF["USB scollegata"] --> RES["10k P3.6-V33"]
-    RES --> RESET["Ricollega / reset"]
-    RESET --> INFO{"wchisp vede CH552?"}
+    OFF["USB disconnected"] --> RES["10k P3.6-V33"]
+    RES --> RESET["Reconnect / reset"]
+    RESET --> INFO{"Does wchisp see the CH552?"}
     INFO -- "No" --> RESET
-    INFO -- "Sì" --> FLASH["Scrivi binario"]
+    INFO -- "Yes" --> FLASH["Write binary"]
     FLASH --> VERIFY{"Verify OK?"}
     VERIFY -- "No" --> RESET
-    VERIFY -- "Sì" --> REMOVE["Scollega e rimuovi"]
+    VERIFY -- "Yes" --> REMOVE["Disconnect and remove"]
     classDef focal fill:#163a2a,stroke:#31dc77,color:#f8fafc,stroke-width:2px
     classDef backend fill:#111827,stroke:#9ca9bc,color:#f8fafc
     class OFF,RES,RESET,INFO,FLASH,VERIFY backend
@@ -41,7 +41,7 @@ flowchart TD
     linkStyle default stroke:#57a6ff,color:#57a6ff
 ```
 
-## Comando luce e salvataggio
+## Lighting command and save
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#111827","primaryTextColor":"#f8fafc","primaryBorderColor":"#9ca9bc","lineColor":"#9ca9bc","secondaryColor":"#0a0f1c","tertiaryColor":"#163a2a","fontFamily":"-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"}}}%%
@@ -54,40 +54,40 @@ sequenceDiagram
     W->>P: POST rgb
     P->>H: write report
     H->>F: SET_RGB + brightness
-    F->>E: aggiorna LED
-    F-->>H: risposta 0x81
+    F->>E: update LED
+    F-->>H: response 0x81
     H-->>P: Feature report
     P-->>W: 200 OK
-    opt Salva
+    opt Save
         W->>P: POST save
         P->>F: SAVE_CONFIG
-        F->>E: scrive Data Flash
+        F->>E: write Data Flash
     end
 ```
 
-## Stati applicazione e bootloader
+## Application and bootloader states
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#111827","primaryTextColor":"#f8fafc","primaryBorderColor":"#9ca9bc","lineColor":"#9ca9bc","secondaryColor":"#0a0f1c","tertiaryColor":"#163a2a","fontFamily":"-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"}}}%%
 stateDiagram-v2
     [*] --> App
-    App --> BootRequest: comando 0x06
-    App --> BootRequest: KEY1 al reset
+    App --> BootRequest: command 0x06
+    App --> BootRequest: KEY1 on reset
     BootRequest --> WCHISP: BOOT_now
     WCHISP --> Writing: flash
     Writing --> Verified: verify OK
-    Verified --> App: reset USB
-    Writing --> WCHISP: errore / retry
+    Verified --> App: USB reset
+    Writing --> WCHISP: error / retry
 ```
 
-## Collegamenti funzionali
+## Functional connections
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#111827","primaryTextColor":"#f8fafc","primaryBorderColor":"#9ca9bc","lineColor":"#9ca9bc","secondaryColor":"#0a0f1c","tertiaryColor":"#163a2a","fontFamily":"-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"}}}%%
 flowchart LR
     USB["USB-C"] --> DP["P3.6 / P3.7"]
     DP --> MCU["CH552G"]
-    K1["Tre pulsanti"] --> MCU
+    K1["Three buttons"] --> MCU
     ENC["Encoder + click"] --> MCU
     MCU --> NEO["P3.4 NeoPixel"]
     NEO --> L1["LED 1"] --> L2["LED 2"] --> L3["LED 3"]
@@ -98,5 +98,4 @@ flowchart LR
     linkStyle default stroke:#57a6ff,color:#57a6ff
 ```
 
-Il collegamento da 10 kΩ serve solo per forzare il bootloader: pin 12 `P3.6/UDP` verso pin 16 `V33`. Non è un componente in serie nel percorso USB.
-
+The 10 kΩ connection is only used to force the bootloader: pin 12 `P3.6/UDP` to pin 16 `V33`. It is not a series component in the USB path.

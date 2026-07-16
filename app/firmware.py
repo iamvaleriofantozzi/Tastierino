@@ -17,22 +17,22 @@ def locate_wchisp():
         path = Path(override).expanduser()
         if path.is_file():
             return path
-        raise RuntimeError(f"WCHISP non valido: {path}")
+        raise RuntimeError(f"Invalid WCHISP path: {path}")
     found = shutil.which("wchisp")
     if found:
         return Path(found)
-    raise RuntimeError("wchisp non trovato nel PATH (oppure imposta WCHISP)")
+    raise RuntimeError("wchisp not found on PATH (or set WCHISP)")
 
 
 def inspect_binary(path):
     path = Path(path).resolve()
     if not path.is_file():
-        raise RuntimeError("File firmware non trovato")
+        raise RuntimeError("Firmware file not found")
     data = path.read_bytes()
     if not data:
-        raise RuntimeError("Il firmware è vuoto")
+        raise RuntimeError("Firmware is empty")
     if len(data) > MAX_CODE_SIZE:
-        raise RuntimeError(f"Firmware troppo grande: {len(data)} > {MAX_CODE_SIZE} byte")
+        raise RuntimeError(f"Firmware too large: {len(data)} > {MAX_CODE_SIZE} bytes")
     return {"path": str(path), "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
 
 
@@ -46,7 +46,7 @@ def build():
 
 def save_upload(data):
     if not data or len(data) > MAX_CODE_SIZE:
-        raise RuntimeError("Dimensione firmware non valida")
+        raise RuntimeError("Invalid firmware size")
     UPLOAD_BIN.parent.mkdir(parents=True, exist_ok=True)
     UPLOAD_BIN.write_bytes(data)
     return inspect_binary(UPLOAD_BIN)

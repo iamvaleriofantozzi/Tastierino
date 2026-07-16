@@ -1,40 +1,39 @@
-# Webapp Python locale
+# Local Python webapp
 
-La webapp espone il controllo del tastierino su `http://127.0.0.1:8765/`. Il server è vincolato esclusivamente al loopback e non è raggiungibile dalla rete LAN.
+The webapp exposes control of the keypad on `http://127.0.0.1:8765/`. The server is bound exclusively to loopback and is not reachable from the LAN.
 
-## Componenti
+## Components
 
-- `app/device.py`: enumerazione HID, scambio pacchetti e API del dispositivo;
-- `app/protocol.py`: VID/PID, comandi e nomi dei controlli;
-- `app/firmware.py`: build, convalida binario e flash;
-- `app/server.py`: server HTTP e API JSON;
-- `app/static/`: interfaccia HTML/CSS/JavaScript;
-- `start.command`: virtualenv, dipendenze, avvio e apertura browser.
+- `app/device.py`: HID enumeration, packet exchange and device API;
+- `app/protocol.py`: VID/PID, commands and control names;
+- `app/firmware.py`: build, binary validation and flashing;
+- `app/server.py`: HTTP server and JSON API;
+- `app/static/`: HTML/CSS/JavaScript interface;
+- `start.command`: virtualenv, dependencies, startup and browser launch.
 
 ## API
 
-| Metodo | Endpoint | Funzione |
+| Method | Endpoint | Function |
 |---|---|---|
-| GET | `/api/status` | stato HID e identità |
-| GET | `/api/config` | keymap, colori e luminosità |
-| GET | `/api/firmware` | dimensione e SHA-256 del binario |
-| POST | `/api/rgb` | colori e luminosità live |
-| POST | `/api/keymap` | keymap live |
-| POST | `/api/save` | persistenza in Data Flash |
+| GET | `/api/status` | HID status and identity |
+| GET | `/api/config` | keymap, colors and brightness |
+| GET | `/api/firmware` | binary size and SHA-256 |
+| POST | `/api/rgb` | live colors and brightness |
+| POST | `/api/keymap` | live keymap |
+| POST | `/api/save` | persistence to Data Flash |
 | POST | `/api/build` | `make clean all` |
-| POST | `/api/firmware/upload` | valida un binario esterno |
-| POST | `/api/bootloader` | salto software al bootloader |
-| POST | `/api/flash` | flash dopo conferma esplicita |
+| POST | `/api/firmware/upload` | validates an external binary |
+| POST | `/api/bootloader` | software jump to bootloader |
+| POST | `/api/flash` | flash after explicit confirmation |
 
-Tutte le richieste POST devono includere `X-Macropad-Client: 1`. È una protezione minima contro richieste casuali da altre pagine; non è un sistema di autenticazione.
+All POST requests must include `X-Macropad-Client: 1`. This is a minimal safeguard against random requests from other pages; it is not an authentication system.
 
-## Uso
+## Usage
 
 ```sh
 ./start.command
 ```
 
-Spostare uno slider o scegliere un colore modifica la RAM del firmware. “Salva in memoria” invia keymap e luci correnti, poi `SAVE_CONFIG`; solo allora la configurazione sopravvive al reset.
+Moving a slider or picking a color changes the firmware's RAM. "Save to memory" sends the current keymap and lighting, then `SAVE_CONFIG`; only then does the configuration survive a reset.
 
-Il flash richiede una conferma esplicita. Il server controlla inoltre che il file non sia vuoto e non superi `0x3800` byte, ma non può provare semanticamente che un binario esterno sia destinato a questa scheda.
-
+Flashing requires explicit confirmation. The server also checks that the file is not empty and does not exceed `0x3800` bytes, but it cannot semantically prove that an external binary is intended for this board.

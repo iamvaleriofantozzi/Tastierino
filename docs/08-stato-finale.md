@@ -1,39 +1,38 @@
-# Stato finale verificato
+# Verified final status
 
-Data dello snapshot: **16 luglio 2026**.
+Snapshot date: **July 16, 2026**.
 
-## Hardware e USB
+## Hardware and USB
 
 - MCU: CH552G, SOP16;
-- VID:PID applicativo: `1189:8890`;
-- Raw HID: usage page `0xFF60`, pacchetti 32 byte;
-- tre LED RGB indirizzabili con luminosità indipendente;
-- tre pulsanti e encoder con click.
+- Application VID:PID: `1189:8890`;
+- Raw HID: usage page `0xFF60`, 32-byte packets;
+- three addressable RGB LEDs with independent brightness;
+- three buttons and an encoder with click.
 
-## Configurazione persistita durante la sessione
+## Configuration persisted during the session
 
-- LED 1: rosso `[255,0,0]`, luminosità `51/255` (20%);
-- LED 2: rosso `[255,0,0]`, luminosità `140/255` (55%);
-- LED 3: rosso `[255,0,0]`, luminosità `255/255` (100%);
-- pulsanti: F13, F14, F15;
-- encoder: mute, volume su, volume giù.
+- LED 1: red `[255,0,0]`, brightness `51/255` (20%);
+- LED 2: red `[255,0,0]`, brightness `140/255` (55%);
+- LED 3: red `[255,0,0]`, brightness `255/255` (100%);
+- buttons: F13, F14, F15;
+- encoder: mute, volume up, volume down.
 
-I valori delle luci sono stati riletti dopo il salvataggio/reset durante la sessione.
+The lighting values were re-read after saving/resetting during the session.
 
 ## Firmware
 
 - file: `firmware/3keys_1knob.bin`;
-- dimensione snapshot: 6.204 byte;
-- limite: 14.336 byte;
+- snapshot size: 6,204 bytes;
+- limit: 14,336 bytes;
 - SHA-256: `2ceffde3bff9a2a5f6176ac49a287ac443a3d4d92bf7a9ab2a203ba3b365cf1b`.
 
-## Test
+## Tests
 
-La suite contiene quattro test unitari per protocollo dispositivo e gestione firmware. Build e test vengono rieseguiti nella verifica finale di questo archivio.
+The suite contains four unit tests for the device protocol and firmware handling. Build and tests are re-run in the final verification of this archive.
 
-## Limiti noti
+## Known limitations
 
-- `wchisp` deve essere nel `PATH`, oppure indicato con la variabile d’ambiente `WCHISP`.
-- L’header locale CH55x include molte strutture USB generiche non usate direttamente: il grafo statico le mostra come comunità o nodi isolati.
-- Il controllo software richiede il firmware personalizzato; il firmware originale non esponeva il protocollo qui documentato.
-
+- `wchisp` must be in the `PATH`, or specified via the `WCHISP` environment variable.
+- The local CH55x header includes many generic USB structures that aren't used directly: the static graph shows them as communities or isolated nodes.
+- Software control requires the custom firmware; the original firmware did not expose the protocol documented here.
