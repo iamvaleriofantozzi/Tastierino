@@ -81,9 +81,9 @@
         </div>
       </section>
       <section class="card keymap">
-        <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div><button id="applyKeys" class="secondary">Apply</button></div>
+        <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div></div>
         <div id="keyRows" class="key-rows"></div>
-        <div class="save-row"><p><strong>Apply</strong> is temporary. <strong>Save to memory</strong> keeps LEDs and keys after unplug.</p><button id="saveConfig" class="primary">Save to memory</button></div>
+        <div class="save-row"><button id="saveConfig" class="primary">Save to memory</button></div>
       </section>
       <section class="card firmware-card">
         <div class="section-title"><div><span class="step warning-step">03</span><h2>Firmware</h2></div></div>
@@ -100,6 +100,21 @@
     </main>
   </div>
   <dialog id="flashDialog"><form method="dialog"><p class="eyebrow danger-text">SENSITIVE OPERATION</p><h2>Confirm flash?</h2><p>The selected firmware will be written and verified. Do not unplug the USB cable until the log shows completion.</p><div class="dialog-actions"><button value="cancel" class="ghost">Cancel</button><button id="confirmFlash" value="default" class="danger">Write and verify</button></div></form></dialog>
+  <div id="hotkeyPopover" class="hotkey-popover" role="dialog" aria-modal="true" aria-labelledby="hotkeyPopoverTitle" hidden>
+    <div class="hotkey-popover-head">
+      <p id="hotkeyPopoverTitle" class="hotkey-popover-title">Pick key</p>
+      <button type="button" class="ghost hotkey-popover-close" data-close-hotkey aria-label="Close">Done</button>
+    </div>
+    <div class="hotkey-mod-row" role="group" aria-label="Modifiers">
+      <button type="button" class="mod-chip" data-pick-mod="1" aria-pressed="false" title="Ctrl">⌃</button>
+      <button type="button" class="mod-chip" data-pick-mod="4" aria-pressed="false" title="Alt / Option">⌥</button>
+      <button type="button" class="mod-chip" data-pick-mod="2" aria-pressed="false" title="Shift">⇧</button>
+      <button type="button" class="mod-chip" data-pick-mod="8" aria-pressed="false" title="Cmd / Win">⌘</button>
+      <span class="hotkey-mod-hint">then pick a key</span>
+    </div>
+    <div class="hotkey-cats" role="tablist" aria-label="Key categories"></div>
+    <div class="hotkey-keys" role="listbox" aria-label="Keys"></div>
+  </div>
   <div id="colorPopover" class="color-popover" role="dialog" aria-modal="true" aria-labelledby="colorPopoverTitle" hidden>
     <div class="color-popover-head">
       <p id="colorPopoverTitle" class="color-popover-title">Key color</p>
