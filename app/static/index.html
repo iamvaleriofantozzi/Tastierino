@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <meta name="theme-color" content="#0c0c0e">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2330d158'/%3E%3Cpath d='M18 19h9v10h10V19h9v26h-9V36H27v9h-9z' fill='%230a0f1c'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2330d158'/%3E%3Cpath d='M18 19h9v10h10V19h9v26h-9V36H27v9h-9z' fill='%230a0a0a'/%3E%3C/svg%3E">
   <title>Tastierino</title>
   <script>
     (() => {
@@ -15,7 +15,7 @@
         : (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
       document.documentElement.dataset.theme = theme;
       const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.content = theme === "dark" ? "#0c0c0e" : "#e8eaef";
+      if (meta) meta.content = theme === "dark" ? "#000000" : "#f2f2f7";
     })();
   </script>
   <link rel="stylesheet" href="/styles.css">
@@ -43,20 +43,38 @@
         <div class="section-title"><div><span class="step">01</span><h2>Lighting</h2></div><button id="lightsOff" class="ghost">Turn all off</button></div>
         <div class="light-rows" aria-label="Per-control lighting">
           <div class="light-row" data-led="0">
-            <label class="light-swatch key-preview"><input type="color" value="#0050ff" data-color="0" aria-label="Color for Key 1"></label>
-            <div class="light-meta"><span class="light-name">Key 1</span><button type="button" class="pulse-toggle is-on" data-pulse="0" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 1"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
+            <div class="light-swatch key-preview">
+              <button type="button" class="swatch-trigger" data-picker="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="colorPopover" aria-label="Pick color for Key 1" title="Pick color">
+                <span class="swatch-led" aria-hidden="true"></span>
+                <span class="swatch-hint" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+              </button>
+              <input type="color" value="#0050ff" data-color="0" tabindex="-1" aria-hidden="true">
+            </div>
+            <div class="light-meta"><span class="light-name">Key 1</span><span class="hex-chip" data-hex-chip="0">#0050FF</span><button type="button" class="pulse-toggle is-on" data-pulse="0" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 1"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
             <div class="quick-colors" role="group" aria-label="Quick colors for Key 1"></div>
             <label class="light-bright"><span class="bright-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><input type="range" min="0" max="255" value="160" data-brightness="0" aria-label="Brightness for Key 1"><output data-brightness-value="0">63%</output></label>
           </div>
           <div class="light-row" data-led="1">
-            <label class="light-swatch key-preview"><input type="color" value="#00ff50" data-color="1" aria-label="Color for Key 2"></label>
-            <div class="light-meta"><span class="light-name">Key 2</span><button type="button" class="pulse-toggle is-on" data-pulse="1" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 2"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
+            <div class="light-swatch key-preview">
+              <button type="button" class="swatch-trigger" data-picker="1" aria-haspopup="dialog" aria-expanded="false" aria-controls="colorPopover" aria-label="Pick color for Key 2" title="Pick color">
+                <span class="swatch-led" aria-hidden="true"></span>
+                <span class="swatch-hint" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+              </button>
+              <input type="color" value="#00ff50" data-color="1" tabindex="-1" aria-hidden="true">
+            </div>
+            <div class="light-meta"><span class="light-name">Key 2</span><span class="hex-chip" data-hex-chip="1">#00FF50</span><button type="button" class="pulse-toggle is-on" data-pulse="1" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 2"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
             <div class="quick-colors" role="group" aria-label="Quick colors for Key 2"></div>
             <label class="light-bright"><span class="bright-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><input type="range" min="0" max="255" value="160" data-brightness="1" aria-label="Brightness for Key 2"><output data-brightness-value="1">63%</output></label>
           </div>
           <div class="light-row" data-led="2">
-            <label class="light-swatch key-preview"><input type="color" value="#ff1400" data-color="2" aria-label="Color for Key 3"></label>
-            <div class="light-meta"><span class="light-name">Key 3</span><button type="button" class="pulse-toggle is-on" data-pulse="2" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 3"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
+            <div class="light-swatch key-preview">
+              <button type="button" class="swatch-trigger" data-picker="2" aria-haspopup="dialog" aria-expanded="false" aria-controls="colorPopover" aria-label="Pick color for Key 3" title="Pick color">
+                <span class="swatch-led" aria-hidden="true"></span>
+                <span class="swatch-hint" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+              </button>
+              <input type="color" value="#ff1400" data-color="2" tabindex="-1" aria-hidden="true">
+            </div>
+            <div class="light-meta"><span class="light-name">Key 3</span><span class="hex-chip" data-hex-chip="2">#FF1400</span><button type="button" class="pulse-toggle is-on" data-pulse="2" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 3"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
             <div class="quick-colors" role="group" aria-label="Quick colors for Key 3"></div>
             <label class="light-bright"><span class="bright-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><input type="range" min="0" max="255" value="160" data-brightness="2" aria-label="Brightness for Key 3"><output data-brightness-value="2">63%</output></label>
           </div>
@@ -82,6 +100,32 @@
     </main>
   </div>
   <dialog id="flashDialog"><form method="dialog"><p class="eyebrow danger-text">SENSITIVE OPERATION</p><h2>Confirm flash?</h2><p>The selected firmware will be written and verified. Do not unplug the USB cable until the log shows completion.</p><div class="dialog-actions"><button value="cancel" class="ghost">Cancel</button><button id="confirmFlash" value="default" class="danger">Write and verify</button></div></form></dialog>
+  <div id="colorPopover" class="color-popover" role="dialog" aria-modal="true" aria-labelledby="colorPopoverTitle" hidden>
+    <div class="color-popover-head">
+      <p id="colorPopoverTitle" class="color-popover-title">Key color</p>
+      <button type="button" class="ghost color-popover-close" data-close-picker aria-label="Close color picker">Done</button>
+    </div>
+    <div class="color-preview-bar" aria-hidden="true">
+      <span class="color-preview-swatch"></span>
+      <span class="color-preview-label">Live</span>
+    </div>
+    <div class="sv-plane" data-sv tabindex="0" role="slider" aria-label="Saturation and brightness" aria-valuemin="0" aria-valuemax="100">
+      <span class="sv-cursor" aria-hidden="true"></span>
+    </div>
+    <label class="hue-field">
+      <span class="label">Hue</span>
+      <input type="range" data-hue min="0" max="360" value="0" aria-label="Hue">
+    </label>
+    <div class="hex-field">
+      <label class="label" for="pickerHex">Hex</label>
+      <div class="hex-input-wrap">
+        <span aria-hidden="true">#</span>
+        <input id="pickerHex" type="text" data-hex maxlength="6" spellcheck="false" autocomplete="off" autocapitalize="characters" inputmode="text" aria-label="Hex color">
+      </div>
+      <button type="button" class="secondary" data-native-picker title="System color picker">⋯</button>
+    </div>
+    <div class="popover-quick" role="group" aria-label="Quick colors"></div>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>
