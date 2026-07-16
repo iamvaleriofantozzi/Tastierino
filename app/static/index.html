@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2331dc77'/%3E%3Cpath d='M18 19h9v10h10V19h9v26h-9V36H27v9h-9z' fill='%230a0f1c'/%3E%3C/svg%3E">
+  <title>CH552 Control Center</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div><p class="eyebrow">OPEN MACROPAD</p><h1>CH552 Control Center</h1><p class="subtitle">LED, keymap e firmware. Tutto locale sul Mac.</p></div>
+      <div id="status" class="status"><span class="dot"></span><span>Verifica…</span></div>
+    </header>
+    <main>
+      <section class="card lighting">
+        <div class="section-title"><div><span class="step">01</span><h2>Illuminazione</h2></div><button id="lightsOff" class="ghost">Spegni tutti</button></div>
+        <div class="keypad-preview" aria-label="Anteprima tastierino">
+          <div class="knob"><span></span></div>
+          <label class="key-preview"><input type="color" value="#0050ff" data-color="0"><span>Tasto 1</span></label>
+          <label class="key-preview"><input type="color" value="#00ff50" data-color="1"><span>Tasto 2</span></label>
+          <label class="key-preview"><input type="color" value="#ff1400" data-color="2"><span>Tasto 3</span></label>
+        </div>
+        <div class="led-levels" aria-label="Luminosità individuale dei LED">
+          <label><span>LED 1 <output data-brightness-value="0">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="0"></label>
+          <label><span>LED 2 <output data-brightness-value="1">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="1"></label>
+          <label><span>LED 3 <output data-brightness-value="2">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="2"></label>
+        </div>
+        <p class="hint">Le modifiche colore sono inviate in tempo reale, senza riflashare.</p>
+      </section>
+      <section class="card keymap">
+        <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div><button id="applyKeys" class="secondary">Applica</button></div>
+        <div id="keyRows" class="key-rows"></div>
+        <div class="save-row"><p><strong>Applica</strong> è temporaneo. <strong>Salva in memoria</strong> conserva LED e tasti dopo lo scollegamento.</p><button id="saveConfig" class="primary">Salva in memoria</button></div>
+      </section>
+      <section class="card firmware-card">
+        <div class="section-title"><div><span class="step warning-step">03</span><h2>Firmware</h2></div></div>
+        <div class="firmware-grid">
+          <div><p class="label">Firmware del progetto</p><p id="firmwareInfo" class="mono">Caricamento…</p><button id="buildFirmware" class="secondary">Compila firmware</button></div>
+          <div><label class="label" for="firmwareFile">Oppure file .bin</label><input id="firmwareFile" type="file" accept=".bin,application/octet-stream"><p id="uploadInfo" class="mono muted">Nessun file selezionato</p></div>
+        </div>
+        <div class="danger-zone"><div><strong>Scrittura firmware</strong><p>Il dispositivo si riavvierà. Non scollegarlo durante la verifica.</p></div><button id="flashFirmware" class="danger">Avvia flash…</button></div>
+      </section>
+      <section class="card console-card">
+        <div class="section-title"><div><span class="step">04</span><h2>Log</h2></div><button id="clearLog" class="ghost">Pulisci</button></div>
+        <pre id="log" aria-live="polite">Control Center pronto.</pre>
+      </section>
+    </main>
+  </div>
+  <dialog id="flashDialog"><form method="dialog"><p class="eyebrow danger-text">OPERAZIONE SENSIBILE</p><h2>Confermi il flash?</h2><p>Verrà scritto il firmware selezionato e verificato. Non scollegare il cavo USB finché il log non mostra il completamento.</p><div class="dialog-actions"><button value="cancel" class="ghost">Annulla</button><button id="confirmFlash" value="default" class="danger">Scrivi e verifica</button></div></form></dialog>
+  <script src="/app.js"></script>
+</body>
+</html>

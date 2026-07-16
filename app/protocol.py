@@ -1,0 +1,16 @@
+VID = 0x1189
+PID = 0x8890
+USAGE_PAGE = 0xFF60
+PACKET_SIZE = 32
+
+SET_RGB = 0x01
+GET_CONFIG = 0x02
+SET_KEYMAP = 0x03
+SAVE_CONFIG = 0x04
+SET_BRIGHTNESS = 0x05
+ENTER_BOOTLOADER = 0x06
+PING = 0x07
+GET_LIGHTING = 0x08
+RESPONSE = 0x80
+
+CONTROL_NAMES = ("Pulsante 1", "Pulsante 2", "Pulsante 3", "Encoder click", "Encoder orario", "Encoder antiorario")

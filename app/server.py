@@ -1,0 +1,132 @@
+import json
+import mimetypes
+import subprocess
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+
+from .device import DeviceError, MacroPad
+from . import firmware
+
+STATIC = Path(__file__).with_name("static")
+DEVICE = MacroPad()
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "CH552Control/1.0"
+
+    def log_message(self, fmt, *args):
+        print(f"[{self.log_date_time_string()}] {fmt % args}")
+
+    def send_json(self, status, data):
+        body = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return json.loads(self.rfile.read(length) or b"{}")
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+        try:
+            if path == "/api/status":
+                self.send_json(200, DEVICE.status())
+                return
+            if path == "/api/config":
+                self.send_json(200, DEVICE.get_config())
+                return
+            if path == "/api/firmware":
+                self.send_json(200, firmware.inspect_binary(firmware.DEFAULT_BIN))
+                return
+            requested = "index.html" if path == "/" else path.lstrip("/")
+            file = (STATIC / requested).resolve()
+            if STATIC.resolve() not in file.parents or not file.is_file():
+                self.send_error(404)
+                return
+            data = file.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as exc:
+            self.send_json(503, {"error": str(exc)})
+
+    def do_POST(self):
+        if self.headers.get("X-Macropad-Client") != "1":
+            self.send_json(403, {"error": "Richiesta locale non autorizzata"})
+            return
+        path = urlparse(self.path).path
+        try:
+            if path == "/api/rgb":
+                data = self.read_json()
+                colors = data["colors"]
+                if len(colors) != 3 or any(len(c) != 3 or any(not isinstance(x, int) or x < 0 or x > 255 for x in c) for c in colors):
+                    raise ValueError("Colori RGB non validi")
+                DEVICE.set_rgb(colors)
+                if "brightness" in data:
+                    values = data["brightness"]
+                    if isinstance(values, int):
+                        values = [values] * 3
+                    if len(values) != 3 or any(not isinstance(value, int) or not 0 <= value <= 255 for value in values):
+                        raise ValueError("Luminosità non valida")
+                    DEVICE.set_brightness(values)
+                self.send_json(200, {"ok": True})
+            elif path == "/api/keymap":
+                data = self.read_json()
+                keys = data["keys"]
+                if len(keys) != 6:
+                    raise ValueError("Servono sei mappature")
+                for key in keys:
+                    if key["type"] not in (0, 1) or any(not 0 <= int(key[x]) <= 255 for x in ("mod", "code")):
+                        raise ValueError("Mappatura non valida")
+                DEVICE.set_keymap(keys)
+                self.send_json(200, {"ok": True})
+            elif path == "/api/save":
+                DEVICE.save()
+                self.send_json(200, {"ok": True})
+            elif path == "/api/build":
+                self.send_json(200, firmware.build())
+            elif path == "/api/firmware/upload":
+                length = int(self.headers.get("Content-Length", 0))
+                self.send_json(200, firmware.save_upload(self.rfile.read(length)))
+            elif path == "/api/bootloader":
+                DEVICE.enter_bootloader()
+                self.send_json(200, {"ok": True})
+            elif path == "/api/flash":
+                data = self.read_json()
+                if data.get("confirm") is not True:
+                    raise ValueError("Conferma flash mancante")
+                source = firmware.UPLOAD_BIN if data.get("uploaded") else firmware.DEFAULT_BIN
+                if data.get("enter_bootloader"):
+                    try:
+                        DEVICE.enter_bootloader()
+                        time.sleep(1)
+                    except DeviceError:
+                        pass
+                self.send_json(200, firmware.flash(source))
+            else:
+                self.send_json(404, {"error": "Endpoint sconosciuto"})
+        except (DeviceError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            self.send_json(400, {"error": str(exc)})
+        except Exception as exc:
+            self.send_json(500, {"error": str(exc)})
+
+
+def main():
+    server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
+    print("CH552 Control Center: http://127.0.0.1:8765")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
