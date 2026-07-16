@@ -82,7 +82,13 @@ class MacroPad:
             offset = 4 + i * 3
             keys.append({"name": name, "mod": r[offset], "type": r[offset + 1], "code": r[offset + 2]})
         lighting = self.get_lighting()
-        return {"protocol": r[2], "brightness": lighting["brightness"], "keys": keys, "colors": lighting["colors"]}
+        return {
+            "protocol": r[2],
+            "brightness": lighting["brightness"],
+            "keys": keys,
+            "colors": lighting["colors"],
+            "pulse": lighting["pulse"],
+        }
 
     def get_lighting(self):
         r = self.exchange(protocol.GET_LIGHTING)
@@ -90,7 +96,12 @@ class MacroPad:
         for i in range(3):
             offset = 5 + i * 3
             colors.append([r[offset], r[offset + 1], r[offset + 2]])
-        return {"brightness": [r[2], r[3], r[4]], "colors": colors}
+        mask = r[14] if len(r) > 14 else 0x07
+        return {
+            "brightness": [r[2], r[3], r[4]],
+            "colors": colors,
+            "pulse": [bool(mask & (1 << i)) for i in range(3)],
+        }
 
     def set_rgb(self, colors):
         payload = bytes(channel for color in colors for channel in color)
@@ -100,6 +111,12 @@ class MacroPad:
         if isinstance(values, int):
             values = [values] * 3
         self.exchange(protocol.SET_BRIGHTNESS, bytes(values))
+
+    def set_pulse(self, enabled):
+        if len(enabled) != 3 or any(not isinstance(flag, bool) for flag in enabled):
+            raise DeviceError("Invalid pulse flags")
+        mask = sum((1 << i) for i, flag in enumerate(enabled) if flag)
+        self.exchange(protocol.SET_PULSE, bytes([mask]))
 
     def set_keymap(self, keys):
         payload = bytes(value for key in keys for value in (key["mod"], key["type"], key["code"]))

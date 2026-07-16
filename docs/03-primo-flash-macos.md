@@ -8,13 +8,20 @@ No Windows VM is needed. Compilation is done with SDCC and programming with `wch
 brew install sdcc
 ```
 
-Also install `wchisp` and verify that it's in the `PATH`:
+Also install `wchisp` and make it discoverable. The webapp looks for it in this order:
+
+1. `WCHISP` environment variable
+2. `PATH`
+3. project-local `tools/wchisp`
+4. common locations (`~/.local/bin`, Homebrew)
 
 ```sh
+# recommended for this repo
+ln -s /absolute/path/to/wchisp tools/wchisp
 wchisp --help
 ```
 
-The webapp looks for `wchisp` in the `PATH`. Alternatively, you can set the `WCHISP` environment variable to the absolute path of the binary.
+`start.command` also widens `PATH` so Finder launches can still find Homebrew tools.
 
 ## Compilation
 

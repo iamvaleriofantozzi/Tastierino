@@ -11,6 +11,7 @@ SET_BRIGHTNESS = 0x05
 ENTER_BOOTLOADER = 0x06
 PING = 0x07
 GET_LIGHTING = 0x08
+SET_PULSE = 0x09
 RESPONSE = 0x80
 
 CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")

@@ -8,7 +8,7 @@ from app import protocol
 class FakeDevice:
     last_write = None
     config_response = bytes([protocol.GET_CONFIG | protocol.RESPONSE, 0, 1, 160] + [0, 0, 0x68] * 6).ljust(32, b"\0")
-    lighting_response = bytes([protocol.GET_LIGHTING | protocol.RESPONSE, 0, 20, 120, 240, 0, 80, 255, 0, 255, 80, 255, 20, 0]).ljust(32, b"\0")
+    lighting_response = bytes([protocol.GET_LIGHTING | protocol.RESPONSE, 0, 20, 120, 240, 0, 80, 255, 0, 255, 80, 255, 20, 0, 0x05]).ljust(32, b"\0")
     def open_path(self, path): pass
     def write(self, data): FakeDevice.last_write = data; return len(data)
     def read(self, size, timeout): return list(self.config_response)
@@ -40,6 +40,7 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(config["brightness"], [20, 120, 240])
         self.assertEqual(config["keys"][0]["code"], 0x68)
         self.assertEqual(config["colors"][2], [255, 20, 0])
+        self.assertEqual(config["pulse"], [True, False, True])
         self.assertEqual(len(FakeDevice.last_write), 33)
         self.assertEqual(FakeDevice.last_write[1], protocol.GET_LIGHTING)
 
@@ -47,6 +48,11 @@ class DeviceTests(unittest.TestCase):
     def test_sets_three_brightness_values(self):
         MacroPad().set_brightness([10, 100, 250])
         self.assertEqual(FakeDevice.last_write[1:5], bytes([protocol.SET_BRIGHTNESS, 10, 100, 250]))
+
+    @patch("app.device.hid", FakeHid)
+    def test_sets_pulse_mask(self):
+        MacroPad().set_pulse([True, False, True])
+        self.assertEqual(FakeDevice.last_write[1:3], bytes([protocol.SET_PULSE, 0x05]))
 
 
 if __name__ == "__main__":

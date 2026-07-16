@@ -15,9 +15,10 @@ void USB_ISR(void) __interrupt(INT_NO_USB) { USB_interrupt(); }
 #define CONSUMER 1
 #define EEPROM_MAGIC_0 0x4d
 #define EEPROM_MAGIC_1 0x50
-#define EEPROM_VERSION 2
+#define EEPROM_VERSION 3
 #define EEPROM_V1_SIZE 32
-#define EEPROM_SIZE 34
+#define EEPROM_V2_SIZE 34
+#define EEPROM_SIZE 35
 
 struct key {
   uint8_t mod;
@@ -35,7 +36,16 @@ struct RGBColor {
 struct key keys[KEY_COUNT];
 struct RGBColor colors[LED_COUNT];
 uint8_t brightness[LED_COUNT];
+uint8_t pulse_t[LED_COUNT];
+uint8_t pulse_en; // bits 0..2 = Key 1..3 press pulse
 __xdata uint8_t rawPacket[RAW_PACKET_SIZE];
+
+// Non-linear press pulse: dip intensity, never black. ~80ms @ 5ms/tick.
+#define PULSE_LEN 16
+static const uint8_t pulse_curve[PULSE_LEN] = {
+  200, 140, 100, 90, 100, 125, 155, 180,
+  200, 218, 232, 242, 248, 252, 254, 255
+};
 
 uint8_t eeprom_read_byte(uint8_t addr) {
   ROM_ADDR_H = DATA_FLASH_ADDR >> 8;
@@ -63,7 +73,10 @@ void eeprom_write_byte(__data uint8_t addr, __xdata uint8_t val) {
 }
 
 uint8_t scale_color(uint8_t value, uint8_t led) {
-  return ((uint16_t)value * ((uint16_t)brightness[led] + 1)) >> 8;
+  uint8_t bri = brightness[led];
+  if (pulse_t[led])
+    bri = ((uint16_t)bri * pulse_curve[PULSE_LEN - pulse_t[led]]) >> 8;
+  return ((uint16_t)value * ((uint16_t)bri + 1)) >> 8;
 }
 
 void NEO_update(void) {
@@ -73,6 +86,9 @@ void NEO_update(void) {
     NEO_writeColor(scale_color(colors[i].r, i), scale_color(colors[i].g, i),
                    scale_color(colors[i].b, i));
   EA = 1;
+  for (i = 0; i < LED_COUNT; i++)
+    if (pulse_t[i])
+      pulse_t[i]--;
 }
 
 void defaults_load(void) {
@@ -96,6 +112,7 @@ void defaults_load(void) {
   colors[2].r = 255; colors[2].g = 20; colors[2].b = 0;
   for (i = 0; i < LED_COUNT; i++)
     brightness[i] = 160;
+  pulse_en = 0x07;
 }
 
 uint8_t config_checksum(uint8_t version, uint8_t size) {
@@ -109,10 +126,10 @@ uint8_t config_checksum(uint8_t version, uint8_t size) {
 void config_load(void) {
   uint8_t i;
   uint8_t version = eeprom_read_byte(2);
-  uint8_t size = version == 1 ? EEPROM_V1_SIZE : EEPROM_SIZE;
+  uint8_t size = version == 1 ? EEPROM_V1_SIZE : (version == 2 ? EEPROM_V2_SIZE : EEPROM_SIZE);
   if (eeprom_read_byte(0) != EEPROM_MAGIC_0 ||
       eeprom_read_byte(1) != EEPROM_MAGIC_1 ||
-      (version != 1 && version != EEPROM_VERSION) ||
+      (version != 1 && version != 2 && version != EEPROM_VERSION) ||
       eeprom_read_byte(3) != config_checksum(version, size)) {
     defaults_load();
     return;
@@ -133,6 +150,7 @@ void config_load(void) {
   brightness[0] = eeprom_read_byte(31);
   brightness[1] = version == 1 ? brightness[0] : eeprom_read_byte(32);
   brightness[2] = version == 1 ? brightness[0] : eeprom_read_byte(33);
+  pulse_en = version >= 3 ? (eeprom_read_byte(34) & 0x07) : 0x07;
 }
 
 void config_save(void) {
@@ -153,14 +171,17 @@ void config_save(void) {
   }
   for (i = 0; i < LED_COUNT; i++)
     eeprom_write_byte(31 + i, brightness[i]);
+  eeprom_write_byte(34, pulse_en & 0x07);
   for (i = 4; i < EEPROM_SIZE; i++)
     checksum ^= eeprom_read_byte(i);
   eeprom_write_byte(3, checksum);
 }
 
-void handle_key(uint8_t current, struct key *key) {
+void handle_key(uint8_t current, struct key *key, uint8_t led) {
   if (current == key->last)
     return;
+  if (current && !key->last && led < LED_COUNT && (pulse_en & (1 << led)))
+    pulse_t[led] = PULSE_LEN;
   key->last = current;
   if (current) {
     if (key->type == KEYBOARD)
@@ -254,6 +275,14 @@ void raw_handle(void) {
       rawPacket[6 + i * 3] = colors[i].g;
       rawPacket[7 + i * 3] = colors[i].b;
     }
+    rawPacket[14] = pulse_en & 0x07;
+  } else if (command == CMD_SET_PULSE) {
+    if (count < 2)
+      raw_response(command, STATUS_BAD_LENGTH);
+    else {
+      pulse_en = rawPacket[1] & 0x07;
+      raw_response(command, STATUS_OK);
+    }
   } else if (command == CMD_PING || command == CMD_ENTER_BOOTLOADER) {
     raw_response(command, STATUS_OK);
     rawPacket[2] = PROTOCOL_VERSION;
@@ -285,12 +314,14 @@ void main(void) {
   KBD_init();
   WDT_start();
   config_load();
+  for (i = 0; i < LED_COUNT; i++)
+    pulse_t[i] = 0;
 
   while (1) {
-    handle_key(!PIN_read(PIN_KEY1), &keys[0]);
-    handle_key(!PIN_read(PIN_KEY2), &keys[1]);
-    handle_key(!PIN_read(PIN_KEY3), &keys[2]);
-    handle_key(!PIN_read(PIN_ENC_SW), &keys[3]);
+    handle_key(!PIN_read(PIN_KEY1), &keys[0], 0);
+    handle_key(!PIN_read(PIN_KEY2), &keys[1], 1);
+    handle_key(!PIN_read(PIN_KEY3), &keys[2], 2);
+    handle_key(!PIN_read(PIN_ENC_SW), &keys[3], 0xff);
 
     encoderKey = 0;
     if (!PIN_read(PIN_ENC_A)) {

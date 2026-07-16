@@ -3,32 +3,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2331dc77'/%3E%3Cpath d='M18 19h9v10h10V19h9v26h-9V36H27v9h-9z' fill='%230a0f1c'/%3E%3C/svg%3E">
-  <title>CH552 Control Center</title>
+  <title>Tastierino</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem("tastierino-theme");
+      const theme = saved === "light" || saved === "dark"
+        ? saved
+        : (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="shell">
     <header>
-      <div><p class="eyebrow">OPEN MACROPAD</p><h1>CH552 Control Center</h1><p class="subtitle">LEDs, keymap, and firmware. All local on your Mac.</p></div>
-      <div id="status" class="status"><span class="dot"></span><span>Checking…</span></div>
+      <div><h1>Tastierino</h1></div>
+      <div class="header-actions">
+        <button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"/></svg>
+        </button>
+        <div id="status" class="status"><span class="dot"></span><span>Checking…</span></div>
+      </div>
     </header>
     <main>
       <section class="card lighting">
         <div class="section-title"><div><span class="step">01</span><h2>Lighting</h2></div><button id="lightsOff" class="ghost">Turn all off</button></div>
-        <div class="keypad-preview" aria-label="Macropad preview">
-          <div class="knob"><span></span></div>
-          <label class="key-preview"><input type="color" value="#0050ff" data-color="0"><span>Key 1</span></label>
-          <label class="key-preview"><input type="color" value="#00ff50" data-color="1"><span>Key 2</span></label>
-          <label class="key-preview"><input type="color" value="#ff1400" data-color="2"><span>Key 3</span></label>
+        <div class="light-rows" aria-label="Per-control lighting">
+          <div class="light-row" data-led="0">
+            <label class="light-swatch key-preview"><input type="color" value="#0050ff" data-color="0" aria-label="Color for Key 1"></label>
+            <div class="light-meta"><span class="light-name">Key 1</span><button type="button" class="pulse-toggle is-on" data-pulse="0" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 1"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
+            <div class="quick-colors" role="group" aria-label="Quick colors for Key 1"></div>
+            <label class="light-bright"><span class="bright-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><input type="range" min="0" max="255" value="160" data-brightness="0" aria-label="Brightness for Key 1"><output data-brightness-value="0">63%</output></label>
+          </div>
+          <div class="light-row" data-led="1">
+            <label class="light-swatch key-preview"><input type="color" value="#00ff50" data-color="1" aria-label="Color for Key 2"></label>
+            <div class="light-meta"><span class="light-name">Key 2</span><button type="button" class="pulse-toggle is-on" data-pulse="1" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 2"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
+            <div class="quick-colors" role="group" aria-label="Quick colors for Key 2"></div>
+            <label class="light-bright"><span class="bright-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><input type="range" min="0" max="255" value="160" data-brightness="1" aria-label="Brightness for Key 2"><output data-brightness-value="1">63%</output></label>
+          </div>
+          <div class="light-row" data-led="2">
+            <label class="light-swatch key-preview"><input type="color" value="#ff1400" data-color="2" aria-label="Color for Key 3"></label>
+            <div class="light-meta"><span class="light-name">Key 3</span><button type="button" class="pulse-toggle is-on" data-pulse="2" aria-pressed="true" title="Press pulse" aria-label="Toggle press pulse for Key 3"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-7 4 14 2-7h5"/></svg></button></div>
+            <div class="quick-colors" role="group" aria-label="Quick colors for Key 3"></div>
+            <label class="light-bright"><span class="bright-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><input type="range" min="0" max="255" value="160" data-brightness="2" aria-label="Brightness for Key 3"><output data-brightness-value="2">63%</output></label>
+          </div>
         </div>
-        <div class="led-levels" aria-label="Per-LED brightness">
-          <label><span>LED 1 <output data-brightness-value="0">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="0"></label>
-          <label><span>LED 2 <output data-brightness-value="1">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="1"></label>
-          <label><span>LED 3 <output data-brightness-value="2">63%</output></span><input type="range" min="0" max="255" value="160" data-brightness="2"></label>
-        </div>
-        <p class="hint">Color changes are sent in real time — no reflash needed.</p>
       </section>
       <section class="card keymap">
         <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div><button id="applyKeys" class="secondary">Apply</button></div>

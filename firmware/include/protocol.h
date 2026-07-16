@@ -11,6 +11,7 @@
 #define CMD_ENTER_BOOTLOADER  0x06
 #define CMD_PING              0x07
 #define CMD_GET_LIGHTING      0x08
+#define CMD_SET_PULSE         0x09
 #define CMD_RESPONSE          0x80
 
 #define STATUS_OK             0

@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,19 +10,58 @@ FIRMWARE_DIR = ROOT / "firmware"
 DEFAULT_BIN = FIRMWARE_DIR / "3keys_1knob.bin"
 UPLOAD_BIN = ROOT / "work" / "uploaded-firmware.bin"
 MAX_CODE_SIZE = 0x3800
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_INFO_PREFIX_RE = re.compile(r"^(?:\d{1,2}:\d{2}:\d{2}\s+)?\[INFO\]\s*")
+
+# Project-local first, then common install locations (Finder/.command has a thin PATH).
+_WCHISP_CANDIDATES = (
+    ROOT / "tools" / "wchisp",
+    ROOT / "bin" / "wchisp",
+    Path.home() / ".local" / "bin" / "wchisp",
+    Path.home() / "bin" / "wchisp",
+    Path("/opt/homebrew/bin/wchisp"),
+    Path("/usr/local/bin/wchisp"),
+)
+
+
+def sanitize_log(text):
+    """Strip ANSI colors and noisy register dumps from tool output."""
+    text = _ANSI_RE.sub("", text or "")
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(("REVERSED:", "WPROTECT:", "GLOBAL_CFG:", "`-")):
+            continue
+        if re.match(r"^\[\d+:\d+\]", line):
+            continue
+        line = _INFO_PREFIX_RE.sub("", line)
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def locate_wchisp():
     override = os.environ.get("WCHISP")
     if override:
         path = Path(override).expanduser()
-        if path.is_file():
-            return path
+        if path.is_file() and os.access(path, os.X_OK):
+            return path.resolve()
         raise RuntimeError(f"Invalid WCHISP path: {path}")
+
     found = shutil.which("wchisp")
     if found:
-        return Path(found)
-    raise RuntimeError("wchisp not found on PATH (or set WCHISP)")
+        return Path(found).resolve()
+
+    for candidate in _WCHISP_CANDIDATES:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate.resolve()
+
+    hint = ROOT / "tools" / "wchisp"
+    raise RuntimeError(
+        "wchisp not found. Put the binary at "
+        f"{hint}, add it to PATH, or set WCHISP to the absolute path."
+    )
 
 
 def inspect_binary(path):
@@ -39,9 +79,10 @@ def inspect_binary(path):
 def build():
     process = subprocess.run(["make", "clean", "all"], cwd=FIRMWARE_DIR, text=True,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+    log = sanitize_log(process.stdout)
     if process.returncode:
-        raise RuntimeError(process.stdout)
-    return {"firmware": inspect_binary(DEFAULT_BIN), "log": process.stdout}
+        raise RuntimeError(log or process.stdout)
+    return {"firmware": inspect_binary(DEFAULT_BIN), "log": log}
 
 
 def save_upload(data):
@@ -55,9 +96,19 @@ def save_upload(data):
 def flash(path=DEFAULT_BIN):
     info = inspect_binary(path)
     tool = locate_wchisp()
-    process = subprocess.run([str(tool), "flash", info["path"]], cwd=ROOT, text=True,
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+    env = os.environ.copy()
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+    process = subprocess.run(
+        [str(tool), "flash", info["path"]],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=45,
+        env=env,
+    )
+    log = sanitize_log(process.stdout)
     if process.returncode:
-        raise RuntimeError(process.stdout)
-    return {"firmware": info, "log": process.stdout}
-
+        raise RuntimeError(log or process.stdout)
+    return {"firmware": info, "log": log, "wchisp": str(tool)}

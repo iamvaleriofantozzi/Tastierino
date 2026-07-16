@@ -77,6 +77,11 @@ class Handler(BaseHTTPRequestHandler):
                     if len(values) != 3 or any(not isinstance(value, int) or not 0 <= value <= 255 for value in values):
                         raise ValueError("Invalid brightness")
                     DEVICE.set_brightness(values)
+                if "pulse" in data:
+                    pulse = data["pulse"]
+                    if len(pulse) != 3 or any(not isinstance(flag, bool) for flag in pulse):
+                        raise ValueError("Invalid pulse flags")
+                    DEVICE.set_pulse(pulse)
                 self.send_json(200, {"ok": True})
             elif path == "/api/keymap":
                 data = self.read_json()
