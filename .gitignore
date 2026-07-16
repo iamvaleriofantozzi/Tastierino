@@ -16,3 +16,6 @@ firmware/*.mem
 firmware/*.rel
 firmware/*.rst
 firmware/*.sym
+
+# graphify — regenerable (post-commit hook / graphify update)
+graphify-out/
