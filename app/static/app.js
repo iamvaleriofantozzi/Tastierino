@@ -163,11 +163,13 @@ $("#clearLog").addEventListener("click", () => $("#log").textContent="Log cleare
 (function initTheme() {
   const root = document.documentElement;
   const btn = $("#themeToggle");
+  const meta = document.querySelector('meta[name="theme-color"]');
   const apply = (theme) => {
     root.dataset.theme = theme;
     localStorage.setItem("tastierino-theme", theme);
     btn.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
     btn.title = theme === "dark" ? "Light mode" : "Dark mode";
+    if (meta) meta.content = theme === "dark" ? "#0c0c0e" : "#e8eaef";
   };
   apply(root.dataset.theme === "light" ? "light" : "dark");
   btn.addEventListener("click", () => apply(root.dataset.theme === "dark" ? "light" : "dark"));

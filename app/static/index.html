@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2331dc77'/%3E%3Cpath d='M18 19h9v10h10V19h9v26h-9V36H27v9h-9z' fill='%230a0f1c'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#0c0c0e">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2330d158'/%3E%3Cpath d='M18 19h9v10h10V19h9v26h-9V36H27v9h-9z' fill='%230a0f1c'/%3E%3C/svg%3E">
   <title>Tastierino</title>
   <script>
     (() => {
@@ -13,14 +14,22 @@
         ? saved
         : (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
       document.documentElement.dataset.theme = theme;
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.content = theme === "dark" ? "#0c0c0e" : "#e8eaef";
     })();
   </script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <div class="ambient" aria-hidden="true"></div>
   <div class="shell">
     <header>
-      <div><h1>Tastierino</h1></div>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 4h3.2v4h3.6V4H16v10h-3.2v-3.6H9.2V14H6V4z"/></svg>
+        </span>
+        <h1>Tastierino</h1>
+      </div>
       <div class="header-actions">
         <button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
           <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
