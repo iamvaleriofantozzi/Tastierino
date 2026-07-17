@@ -1075,14 +1075,12 @@ input[type="range"] {
   margin: 10px 0 0;
 }
 
-.hold-rows {
-  margin-top: 8px;
+.keymap-group {
+  position: relative;
 }
 
 .hold-rows:not(:empty) {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: var(--hairline) solid var(--glass-stroke-soft);
+  margin-top: 8px;
 }
 
 .key-rows {
@@ -1093,7 +1091,7 @@ input[type="range"] {
 
 .key-row {
   display: grid;
-  grid-template-columns: 1.15fr minmax(0, 1.8fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) 310px auto auto;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -1104,13 +1102,57 @@ input[type="range"] {
     border-color var(--dur) var(--ease);
 }
 
+.key-lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.key-row .key-role {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: var(--hairline) solid var(--glass-stroke-soft);
+  color: var(--muted);
+  font: 650 9px/1 ui-monospace, "SF Mono", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
 .key-row.hold-row {
-  grid-template-columns: minmax(110px, 0.9fr) minmax(110px, 0.9fr) minmax(0, 1.4fr) auto auto;
+  background: var(--glass);
+  border-color: var(--glass-stroke-soft);
+}
+
+.hold-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.hold-op {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .key-row:hover {
   background: var(--row);
   border-color: var(--glass-stroke-soft);
+}
+
+.key-row.hold-row:hover {
+  background: var(--glass-strong);
 }
 
 .key-row.is-recording {
@@ -1122,6 +1164,12 @@ input[type="range"] {
   font-weight: 600;
   font-size: 13px;
   letter-spacing: -0.01em;
+}
+
+.hotkey-wrap {
+  position: relative;
+  min-width: 0;
+  width: 100%;
 }
 
 .hotkey-field {
@@ -1144,6 +1192,10 @@ input[type="range"] {
     background var(--dur) var(--ease);
 }
 
+.hotkey-field.is-empty {
+  color: var(--text-secondary);
+}
+
 .hotkey-field:hover,
 .hotkey-field[aria-expanded="true"] {
   border-color: var(--glass-stroke);
@@ -1152,6 +1204,104 @@ input[type="range"] {
 .key-row.is-recording .hotkey-field {
   border-color: color-mix(in srgb, var(--green) 45%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 20%, transparent);
+}
+
+.hotkey-step {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.hotkey-then {
+  margin: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.hotkey-add-step {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 6px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px dashed var(--glass-stroke);
+  background: transparent;
+  color: var(--muted);
+  font: 650 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.hotkey-add-step:hover {
+  color: var(--text);
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.hotkey-field.has-binding {
+  flex-wrap: wrap;
+}
+
+.hotkey-chips {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.hotkey-clear {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 2;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: var(--hairline) solid var(--glass-stroke);
+  border-radius: 50%;
+  background: var(--input);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  font: 650 12px/1 system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.hotkey-chips:hover .hotkey-clear,
+.hotkey-chips:focus-within .hotkey-clear,
+.hotkey-clear:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .hotkey-field.has-binding .hotkey-clear {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.hotkey-clear:hover,
+.hotkey-clear:focus-visible {
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+  color: var(--red);
 }
 
 .hotkey-chip {
@@ -1177,6 +1327,7 @@ input[type="range"] {
 .key-row .target-select {
   width: 100%;
   min-width: 0;
+  flex: 1;
   color: var(--text);
   background: var(--input);
   border: var(--hairline) solid var(--glass-stroke-soft);
@@ -1379,6 +1530,10 @@ input[type="range"] {
   position: relative;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.save-row #addHold {
+  margin-right: 0;
 }
 
 .save-row #loadDeviceKeymap {
@@ -1604,18 +1759,19 @@ button:disabled {
   }
 
   .key-row {
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
-  .key-name,
-  .key-row .fn-select,
-  .key-row .target-select,
-  .hotkey-field {
+  .key-row .hotkey-wrap {
     grid-column: 1 / -1;
   }
 
-  .key-row.hold-row {
-    grid-template-columns: 1fr 1fr;
+  .key-row.hold-row .key-lead {
+    flex-wrap: wrap;
+  }
+
+  .key-row.hold-row .hold-slot {
+    flex: 1 1 140px;
   }
 
   .save-row,
@@ -1648,8 +1804,13 @@ button:disabled {
     grid-template-columns: 1fr 1fr;
   }
 
+  .key-row .key-lead {
+    grid-column: 1 / -1;
+  }
+
   .key-row .record,
-  .key-row .clear-hotkey {
+  .key-row .clear-hotkey,
+  .key-row .remove-hold {
     width: 100%;
   }
 

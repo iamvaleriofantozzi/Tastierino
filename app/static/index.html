@@ -82,10 +82,14 @@
       </section>
       <section class="card keymap">
         <div class="section-title"><div><h2>Keymap</h2></div></div>
-        <div id="keyRows" class="key-rows"></div>
-        <div id="holdRows" class="key-rows hold-rows"></div>
+
+        <div class="keymap-group">
+          <div id="keyRows" class="key-rows"></div>
+          <div id="holdRows" class="key-rows hold-rows" aria-label="Hold Fn mappings"></div>
+        </div>
+
         <div class="save-row">
-          <button type="button" id="addHold" class="secondary">Add</button>
+          <button type="button" id="addHold" class="secondary">Add mapping</button>
           <button type="button" id="loadDeviceKeymap" class="ghost">Load from device</button>
           <button type="button" id="saveConfig" class="primary">Save to memory</button>
         </div>

@@ -17,15 +17,17 @@ void USB_ISR(void) __interrupt(INT_NO_USB) { USB_interrupt(); }
 #define MOUSE 2
 #define EEPROM_MAGIC_0 0x4d
 #define EEPROM_MAGIC_1 0x50
-#define EEPROM_VERSION 5
+#define EEPROM_VERSION 6
 #define EEPROM_V1_SIZE 32
 #define EEPROM_V2_SIZE 34
 #define EEPROM_V3_SIZE 35
 #define EEPROM_V4_SIZE 54
-#define EEPROM_SIZE 108
+#define EEPROM_V5_SIZE 108
+#define EEPROM_SIZE 126
 #define HOLD_TICKS 40   // ~200 ms @ 5 ms/loop — enter Fn, never emit tap
 #define MIN_TAP_TICKS 4 // ~20 ms — ignore bounce "releases" as taps
 #define DEBOUNCE_TICKS 2
+#define SEQ_GAP_MS 40   // delay between sequential L0 taps
 
 struct binding {
   uint8_t mod;
@@ -40,6 +42,7 @@ struct RGBColor {
 };
 
 __xdata struct binding layers[LAYER_COUNT][KEY_COUNT];
+__xdata struct binding l0_step1[KEY_COUNT]; // Tap layer: optional 2nd action (sequential)
 struct RGBColor colors[LED_COUNT];
 uint8_t brightness[LED_COUNT];
 uint8_t pulse_t[LED_COUNT];
@@ -52,6 +55,7 @@ uint8_t key_db[KEY_COUNT];
 uint8_t hold_cnt[LT_KEY_COUNT];
 uint8_t lt_became_fn[LT_KEY_COUNT]; // this press already entered Fn — never tap
 uint8_t armed_layer[KEY_COUNT];
+uint8_t armed_seq[KEY_COUNT]; // 1 = fired L0 sequence on press (skip release)
 __xdata uint8_t rawPacket[RAW_PACKET_SIZE];
 
 // Non-linear press pulse: dip intensity, never black. ~80ms @ 5ms/tick.
@@ -151,6 +155,12 @@ void defaults_load(void) {
   for (layer = 2; layer < LAYER_COUNT; layer++)
     copy_layer(layer, 1);
 
+  for (i = 0; i < KEY_COUNT; i++) {
+    l0_step1[i].mod = 0;
+    l0_step1[i].type = KEYBOARD;
+    l0_step1[i].code = 0;
+  }
+
   colors[0].r = 0; colors[0].g = 80; colors[0].b = 255;
   colors[1].r = 0; colors[1].g = 255; colors[1].b = 80;
   colors[2].r = 255; colors[2].g = 20; colors[2].b = 0;
@@ -186,6 +196,8 @@ void config_load(void) {
     size = EEPROM_V3_SIZE;
   else if (version == 4)
     size = EEPROM_V4_SIZE;
+  else if (version == 5)
+    size = EEPROM_V5_SIZE;
   else
     size = EEPROM_SIZE;
 
@@ -202,9 +214,37 @@ void config_load(void) {
     layers[0][i].type = eeprom_read_byte(5 + i * KEY_FIELDS);
     layers[0][i].code = eeprom_read_byte(6 + i * KEY_FIELDS);
     sanitize_binding(&layers[0][i]);
+    l0_step1[i].mod = 0;
+    l0_step1[i].type = KEYBOARD;
+    l0_step1[i].code = 0;
   }
 
-  if (version >= 5) {
+  if (version >= 6) {
+    for (i = 0; i < KEY_COUNT; i++) {
+      l0_step1[i].mod = eeprom_read_byte(22 + i * KEY_FIELDS);
+      l0_step1[i].type = eeprom_read_byte(23 + i * KEY_FIELDS);
+      l0_step1[i].code = eeprom_read_byte(24 + i * KEY_FIELDS);
+      sanitize_binding(&l0_step1[i]);
+    }
+    for (layer = 1; layer < LAYER_COUNT; layer++) {
+      for (i = 0; i < KEY_COUNT; i++) {
+        layers[layer][i].mod = eeprom_read_byte(22 + layer * 18 + i * KEY_FIELDS);
+        layers[layer][i].type = eeprom_read_byte(23 + layer * 18 + i * KEY_FIELDS);
+        layers[layer][i].code = eeprom_read_byte(24 + layer * 18 + i * KEY_FIELDS);
+        sanitize_binding(&layers[layer][i]);
+      }
+    }
+    for (i = 0; i < LED_COUNT; i++) {
+      colors[i].r = eeprom_read_byte(112 + i * RGB_FIELDS);
+      colors[i].g = eeprom_read_byte(113 + i * RGB_FIELDS);
+      colors[i].b = eeprom_read_byte(114 + i * RGB_FIELDS);
+    }
+    brightness[0] = eeprom_read_byte(121);
+    brightness[1] = eeprom_read_byte(122);
+    brightness[2] = eeprom_read_byte(123);
+    pulse_en = eeprom_read_byte(124) & 0x07;
+    lt_mask = eeprom_read_byte(125) & 0x0f;
+  } else if (version >= 5) {
     for (layer = 1; layer < LAYER_COUNT; layer++) {
       for (i = 0; i < KEY_COUNT; i++) {
         layers[layer][i].mod = eeprom_read_byte(4 + layer * 18 + i * KEY_FIELDS);
@@ -266,22 +306,31 @@ void config_save(void) {
   eeprom_write_byte(0, EEPROM_MAGIC_0);
   eeprom_write_byte(1, EEPROM_MAGIC_1);
   eeprom_write_byte(2, EEPROM_VERSION);
-  for (layer = 0; layer < LAYER_COUNT; layer++) {
+  for (i = 0; i < KEY_COUNT; i++) {
+    eeprom_write_byte(4 + i * KEY_FIELDS, layers[0][i].mod);
+    eeprom_write_byte(5 + i * KEY_FIELDS, layers[0][i].type);
+    eeprom_write_byte(6 + i * KEY_FIELDS, layers[0][i].code);
+    eeprom_write_byte(22 + i * KEY_FIELDS, l0_step1[i].mod);
+    eeprom_write_byte(23 + i * KEY_FIELDS, l0_step1[i].type);
+    eeprom_write_byte(24 + i * KEY_FIELDS, l0_step1[i].code);
+  }
+  for (layer = 1; layer < LAYER_COUNT; layer++) {
     for (i = 0; i < KEY_COUNT; i++) {
-      eeprom_write_byte(4 + layer * 18 + i * KEY_FIELDS, layers[layer][i].mod);
-      eeprom_write_byte(5 + layer * 18 + i * KEY_FIELDS, layers[layer][i].type);
-      eeprom_write_byte(6 + layer * 18 + i * KEY_FIELDS, layers[layer][i].code);
+      eeprom_write_byte(22 + layer * 18 + i * KEY_FIELDS, layers[layer][i].mod);
+      eeprom_write_byte(23 + layer * 18 + i * KEY_FIELDS, layers[layer][i].type);
+      eeprom_write_byte(24 + layer * 18 + i * KEY_FIELDS, layers[layer][i].code);
     }
   }
   for (i = 0; i < LED_COUNT; i++) {
-    eeprom_write_byte(94 + i * RGB_FIELDS, colors[i].r);
-    eeprom_write_byte(95 + i * RGB_FIELDS, colors[i].g);
-    eeprom_write_byte(96 + i * RGB_FIELDS, colors[i].b);
+    eeprom_write_byte(112 + i * RGB_FIELDS, colors[i].r);
+    eeprom_write_byte(113 + i * RGB_FIELDS, colors[i].g);
+    eeprom_write_byte(114 + i * RGB_FIELDS, colors[i].b);
   }
-  for (i = 0; i < LED_COUNT; i++)
-    eeprom_write_byte(103 + i, brightness[i]);
-  eeprom_write_byte(106, pulse_en & 0x07);
-  eeprom_write_byte(107, lt_mask & 0x0f);
+  eeprom_write_byte(121, brightness[0]);
+  eeprom_write_byte(122, brightness[1]);
+  eeprom_write_byte(123, brightness[2]);
+  eeprom_write_byte(124, pulse_en & 0x07);
+  eeprom_write_byte(125, lt_mask & 0x0f);
   for (i = 4; i < EEPROM_SIZE; i++)
     checksum ^= eeprom_read_byte(i);
   eeprom_write_byte(3, checksum);
@@ -323,6 +372,20 @@ void binding_tap(__xdata struct binding *b) {
     MOUSE_type(b->code);
 }
 
+uint8_t binding_active(__xdata struct binding *b) {
+  return b->code || b->mod || b->type;
+}
+
+// Play L0 tap sequence: step0 then optional step1.
+void binding_play_l0(uint8_t idx) {
+  binding_tap(&layers[0][idx]);
+  if (binding_active(&l0_step1[idx])) {
+    DLY_ms(SEQ_GAP_MS);
+    WDT_reset();
+    binding_tap(&l0_step1[idx]);
+  }
+}
+
 // Tap-on-release + hold-on-timer. Long-press must NEVER emit tap.
 void process_key(uint8_t idx, uint8_t current, uint8_t led) {
   uint8_t was = key_last[idx];
@@ -334,9 +397,17 @@ void process_key(uint8_t idx, uint8_t current, uint8_t led) {
     if (lt) {
       hold_cnt[idx] = 0;
       lt_became_fn[idx] = 0;
+      armed_seq[idx] = 0;
     } else {
       armed_layer[idx] = active_layer();
-      binding_press(&layers[armed_layer[idx]][idx]);
+      // Multi-step Tap: fire full sequence on press (no hold semantics).
+      if (armed_layer[idx] == 0 && binding_active(&l0_step1[idx])) {
+        binding_play_l0(idx);
+        armed_seq[idx] = 1;
+      } else {
+        binding_press(&layers[armed_layer[idx]][idx]);
+        armed_seq[idx] = 0;
+      }
     }
   } else if (current && was) {
     if (lt && !lt_became_fn[idx]) {
@@ -353,15 +424,16 @@ void process_key(uint8_t idx, uint8_t current, uint8_t led) {
         // Long-press Fn: release only, no tap
         fn_mask &= ~(1 << idx);
       } else if (hold_cnt[idx] >= MIN_TAP_TICKS) {
-        // Short intentional press
-        binding_tap(&layers[0][idx]);
+        // Short intentional press — play L0 sequence
+        binding_play_l0(idx);
       }
       // else: bounce / noise — ignore
       hold_cnt[idx] = 0;
       lt_became_fn[idx] = 0;
-    } else {
+    } else if (!armed_seq[idx]) {
       binding_release(&layers[armed_layer[idx]][idx]);
     }
+    armed_seq[idx] = 0;
   }
   key_last[idx] = current;
 }
@@ -389,21 +461,31 @@ void raw_response(uint8_t command, uint8_t status) {
   rawPacket[1] = status;
 }
 
-void pack_layer(uint8_t layer, uint8_t offset) {
+void pack_layer(uint8_t layer, uint8_t step, uint8_t offset) {
   uint8_t i;
+  __xdata struct binding *src;
   for (i = 0; i < KEY_COUNT; i++) {
-    rawPacket[offset + i * 3] = layers[layer][i].mod;
-    rawPacket[offset + 1 + i * 3] = layers[layer][i].type;
-    rawPacket[offset + 2 + i * 3] = layers[layer][i].code;
+    if (layer == 0 && step == 1)
+      src = &l0_step1[i];
+    else
+      src = &layers[layer][i];
+    rawPacket[offset + i * 3] = src->mod;
+    rawPacket[offset + 1 + i * 3] = src->type;
+    rawPacket[offset + 2 + i * 3] = src->code;
   }
 }
 
-void unpack_layer(uint8_t layer, uint8_t offset) {
+void unpack_layer(uint8_t layer, uint8_t step, uint8_t offset) {
   uint8_t i;
+  __xdata struct binding *dst;
   for (i = 0; i < KEY_COUNT; i++) {
-    layers[layer][i].mod = rawPacket[offset + i * 3];
-    layers[layer][i].type = rawPacket[offset + 1 + i * 3] > MOUSE ? 0 : rawPacket[offset + 1 + i * 3];
-    layers[layer][i].code = rawPacket[offset + 2 + i * 3];
+    if (layer == 0 && step == 1)
+      dst = &l0_step1[i];
+    else
+      dst = &layers[layer][i];
+    dst->mod = rawPacket[offset + i * 3];
+    dst->type = rawPacket[offset + 1 + i * 3] > MOUSE ? 0 : rawPacket[offset + 1 + i * 3];
+    dst->code = rawPacket[offset + 2 + i * 3];
   }
 }
 
@@ -412,6 +494,8 @@ void raw_handle(void) {
   uint8_t command;
   uint8_t i;
   uint8_t layer;
+  uint8_t step;
+  uint8_t data_off;
   if (!count)
     return;
   for (i = 0; i < count && i < RAW_PACKET_SIZE; i++)
@@ -444,25 +528,38 @@ void raw_handle(void) {
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_KEYMAP) {
-    // byte1 = layer 0..4, bytes2..19 = six [mod,type,code]
-    if (count < 20) {
+    // v3: [layer][18 keys]  |  v4+: [layer][step][18 keys] (step only for L0)
+    step = 0;
+    data_off = 2;
+    if (count >= 21) {
+      step = rawPacket[2];
+      data_off = 3;
+    }
+    if (count < data_off + 18) {
       raw_response(command, STATUS_BAD_LENGTH);
     } else if (rawPacket[1] >= LAYER_COUNT) {
       raw_response(command, STATUS_BAD_COMMAND);
+    } else if (step >= MACRO_STEPS || (step > 0 && rawPacket[1] != 0)) {
+      raw_response(command, STATUS_BAD_COMMAND);
     } else {
-      unpack_layer(rawPacket[1], 2);
+      unpack_layer(rawPacket[1], step, data_off);
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_GET_KEYMAP) {
+    // request: [layer] or [layer, step]
+    step = (count >= 3) ? rawPacket[2] : 0;
     if (count < 2) {
       raw_response(command, STATUS_BAD_LENGTH);
     } else if (rawPacket[1] >= LAYER_COUNT) {
+      raw_response(command, STATUS_BAD_COMMAND);
+    } else if (step >= MACRO_STEPS || (step > 0 && rawPacket[1] != 0)) {
       raw_response(command, STATUS_BAD_COMMAND);
     } else {
       layer = rawPacket[1];
       raw_response(command, STATUS_OK);
       rawPacket[2] = layer;
-      pack_layer(layer, 3);
+      rawPacket[3] = step;
+      pack_layer(layer, step, 4);
     }
   } else if (command == CMD_SET_LT_MASK) {
     if (count < 2)
@@ -478,7 +575,7 @@ void raw_handle(void) {
     raw_response(command, STATUS_OK);
     rawPacket[2] = PROTOCOL_VERSION;
     rawPacket[3] = lt_mask & 0x0f;
-    pack_layer(0, 4);
+    pack_layer(0, 0, 4);
     for (i = 0; i < LED_COUNT; i++) {
       rawPacket[22 + i * 3] = colors[i].r;
       rawPacket[23 + i * 3] = colors[i].g;
@@ -515,7 +612,6 @@ void raw_handle(void) {
 }
 
 void main(void) {
-  __xdata struct binding *encoderKey;
   uint8_t i;
   uint8_t layer;
 
@@ -539,6 +635,7 @@ void main(void) {
     key_raw[i] = 0;
     key_db[i] = 0;
     armed_layer[i] = 0;
+    armed_seq[i] = 0;
   }
   for (i = 0; i < LT_KEY_COUNT; i++) {
     hold_cnt[i] = 0;
@@ -553,16 +650,17 @@ void main(void) {
     process_key_debounced(2, !PIN_read(PIN_KEY3), 2);
     process_key_debounced(3, !PIN_read(PIN_ENC_SW), 0xff);
 
-    encoderKey = 0;
     if (!PIN_read(PIN_ENC_A)) {
       layer = active_layer();
-      encoderKey = PIN_read(PIN_ENC_B) ? &layers[layer][4] : &layers[layer][5];
+      i = PIN_read(PIN_ENC_B) ? 4 : 5;
       DLY_ms(10);
       while (!PIN_read(PIN_ENC_A))
         WDT_reset();
+      if (layer == 0)
+        binding_play_l0(i);
+      else
+        binding_tap(&layers[layer][i]);
     }
-    if (encoderKey)
-      binding_tap(encoderKey);
 
     raw_handle();
     NEO_update();

@@ -91,14 +91,30 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.read_json()
                 keys = data["keys"]
                 layer = int(data.get("layer", 0))
+                step = int(data.get("step", 0))
                 if layer not in range(5):
                     raise ValueError("Invalid layer")
+                if step not in range(2):
+                    raise ValueError("Invalid step")
                 if len(keys) != 6:
                     raise ValueError("Six mappings required")
                 for key in keys:
-                    if key["type"] not in (0, 1, 2) or any(not 0 <= int(key[x]) <= 255 for x in ("mod", "code")):
+                    steps = key.get("steps")
+                    if isinstance(steps, list):
+                        if not steps and step == 0:
+                            continue
+                        src = steps[step] if step < len(steps) else {"mod": 0, "type": 0, "code": 0}
+                    else:
+                        src = key
+                    if int(src.get("type", 0)) not in (0, 1, 2):
                         raise ValueError("Invalid mapping")
-                DEVICE.set_keymap(keys, layer=layer)
+                    if any(not 0 <= int(src.get(x, 0)) <= 255 for x in ("mod", "code", "type")):
+                        raise ValueError("Invalid mapping")
+                if layer == 0:
+                    DEVICE.set_keymap(keys, layer=0, step=0)
+                    DEVICE.set_keymap(keys, layer=0, step=1)
+                else:
+                    DEVICE.set_keymap(keys, layer=layer, step=0)
                 if "lt_mask" in data:
                     mask = int(data["lt_mask"])
                     if not 0 <= mask <= 0x0F:

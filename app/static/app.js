@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const controls = ["Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise"];
 const LT_CAPABLE = 4;
+const MACRO_STEPS = 2; // Tap layer: sequential actions (firmware limit)
 const QUICK_COLORS = ["#ff0000","#ff8c00","#ffd400","#00ff50","#0050ff","#ffffff"];
 let colors = [[0,80,255],[0,255,80],[255,20,0]];
 let brightness = [160,160,160];
@@ -32,9 +33,27 @@ let layerKeys = [
     {mod:0,type:1,code:0xcd},{mod:0,type:1,code:0xb5},{mod:0,type:1,code:0xb6},
   ],
 ];
-const DEFAULT_KEYS = layerKeys[0].map(k => ({...k}));
+const DEFAULT_KEYS = layerKeys[0].map(k => normalizeKey(k));
 const DEFAULT_KEYS_FN = layerKeys[1].map(k => ({...k}));
 let settingsTimer = null;
+let editStepIndex = 0; // which sequence step the picker/record edits
+
+function normalizeKey(key) {
+  if (!key) return {mod: 0, type: 0, code: 0, steps: []};
+  if (Array.isArray(key.steps)) {
+    const steps = key.steps
+      .slice(0, MACRO_STEPS)
+      .map(s => ({mod: s.mod | 0, type: s.type | 0, code: s.code | 0}))
+      .filter(s => s.code || s.mod || s.type);
+    const base = steps[0] ? {...steps[0]} : {mod: 0, type: 0, code: 0};
+    return {...base, steps};
+  }
+  const base = {mod: key.mod | 0, type: key.type | 0, code: key.code | 0};
+  const steps = (base.code || base.mod || base.type) ? [{...base}] : [];
+  return {...base, steps};
+}
+
+layerKeys[0] = layerKeys[0].map(normalizeKey);
 
 function log(message) {
   const area = $("#log");
@@ -237,17 +256,44 @@ function shortcutChips({type, mod, code}, {pendingMod = 0} = {}) {
 }
 
 function shortcutText(binding, opts) {
-  return shortcutChips(binding, opts).join(" ") || "Set shortcut…";
+  return shortcutChips(binding, opts).join(" ") || "No action";
+}
+
+function bindingIsEmpty({type, mod, code}) {
+  return !(type | mod | code);
+}
+
+const EMPTY_BINDING = {type: 0, mod: 0, code: 0};
+
+function getRowSteps(row) {
+  const steps = [];
+  const s0 = {
+    type: Number(row.dataset.type) || 0,
+    mod: Number(row.dataset.mod) || 0,
+    code: Number(row.dataset.code) || 0,
+  };
+  if (!bindingIsEmpty(s0)) steps.push(s0);
+  if (row.classList.contains("tap-row") && row.dataset.hasStep1 === "1") {
+    const s1 = {
+      type: Number(row.dataset.type1) || 0,
+      mod: Number(row.dataset.mod1) || 0,
+      code: Number(row.dataset.code1) || 0,
+    };
+    if (!bindingIsEmpty(s1)) steps.push(s1);
+  }
+  return steps;
 }
 
 function getRowBinding(row) {
-  const type = Number(row.dataset.type);
-  const mod = Number(row.dataset.mod);
-  const code = Number(row.dataset.code);
+  const steps = getRowSteps(row);
+  if (row.classList.contains("tap-row") && steps[editStepIndex]) {
+    return {...steps[editStepIndex]};
+  }
+  if (steps.length) return {...steps[0]};
   return {
-    type: Number.isFinite(type) ? type : 0,
-    mod: Number.isFinite(mod) ? mod : 0,
-    code: Number.isFinite(code) ? code : 0,
+    type: Number(row.dataset.type) || 0,
+    mod: Number(row.dataset.mod) || 0,
+    code: Number(row.dataset.code) || 0,
   };
 }
 
@@ -262,22 +308,65 @@ function rowLabel(row) {
 }
 
 function paintHotkeyField(row, {pendingMod = 0, recording = false} = {}) {
-  const binding = getRowBinding(row);
   const field = row.querySelector(".hotkey-field");
   if (!field) return;
-  const chips = recording
-    ? shortcutChips({type: 0, mod: 0, code: 0}, {pendingMod})
-    : shortcutChips(binding, {pendingMod});
-  field.classList.toggle("is-empty", chips.length === 0);
-  if (chips.length) {
-    field.innerHTML = chips.map(c => `<span class="hotkey-chip">${c}</span>`).join("");
-  } else {
-    field.innerHTML = `<span class="hotkey-placeholder">${recording ? "Press keys…" : "Set shortcut…"}</span>`;
+  const steps = getRowSteps(row);
+  const multi = row.classList.contains("tap-row");
+  const empty = !recording && steps.length === 0 && !pendingMod;
+  field.classList.toggle("is-empty", empty);
+  field.classList.toggle("has-binding", steps.length > 0 && !recording);
+
+  if (recording) {
+    const chips = shortcutChips({type: 0, mod: 0, code: 0}, {pendingMod});
+    field.innerHTML = chips.length
+      ? `<span class="hotkey-chips">${chips.map(c => `<span class="hotkey-chip">${c}</span>`).join("")}</span>`
+      : `<span class="hotkey-placeholder">Press keys…</span>`;
+    field.setAttribute("aria-label", `${rowLabel(row)}: Recording`);
+    return;
   }
-  const spoken = recording
-    ? (chips.join(" ") || "Recording")
-    : shortcutText(binding, {pendingMod});
-  field.setAttribute("aria-label", `${rowLabel(row)}: ${spoken}`);
+
+  if (!steps.length) {
+    field.innerHTML = `<span class="hotkey-placeholder">No action</span>`;
+    field.setAttribute("aria-label", `${rowLabel(row)}: No action`);
+    return;
+  }
+
+  const label = rowLabel(row);
+  const parts = steps.map((step, i) => {
+    const chips = shortcutChips(step).map(c => `<span class="hotkey-chip">${c}</span>`).join("");
+    return `<span class="hotkey-step" data-step="${i}">
+      <span class="hotkey-chips">${chips}<button type="button" class="hotkey-clear" data-clear-step="${i}" aria-label="Clear step ${i + 1} for ${label}" title="Remove">×</button></span>
+    </span>`;
+  });
+  const addBtn = multi && steps.length < MACRO_STEPS
+    ? `<button type="button" class="hotkey-add-step" aria-label="Add next action">+</button>`
+    : "";
+  field.innerHTML = parts.join(`<span class="hotkey-then" aria-hidden="true">→</span>`) + addBtn;
+  const spoken = steps.map(s => shortcutText(s)).join(" then ");
+  field.setAttribute("aria-label", `${label}: ${spoken}`);
+}
+
+function setRowSteps(row, steps) {
+  const clean = (steps || [])
+    .slice(0, row.classList.contains("tap-row") ? MACRO_STEPS : 1)
+    .map(s => ({mod: s.mod | 0, type: s.type | 0, code: s.code | 0}))
+    .filter(s => s.code || s.mod || s.type);
+  const s0 = clean[0] || EMPTY_BINDING;
+  row.dataset.type = String(s0.type);
+  row.dataset.mod = String(s0.mod);
+  row.dataset.code = String(s0.code);
+  if (clean[1]) {
+    row.dataset.hasStep1 = "1";
+    row.dataset.type1 = String(clean[1].type);
+    row.dataset.mod1 = String(clean[1].mod);
+    row.dataset.code1 = String(clean[1].code);
+  } else {
+    delete row.dataset.hasStep1;
+    delete row.dataset.type1;
+    delete row.dataset.mod1;
+    delete row.dataset.code1;
+  }
+  paintHotkeyField(row);
 }
 
 function setRowBinding(row, {type, mod, code}) {
@@ -286,10 +375,24 @@ function setRowBinding(row, {type, mod, code}) {
     mod: type === 0 ? (mod | 0) : 0,
     code: code | 0,
   };
-  row.dataset.type = String(next.type);
-  row.dataset.mod = String(next.mod);
-  row.dataset.code = String(next.code);
-  paintHotkeyField(row);
+  if (row.classList.contains("hold-row") || !row.classList.contains("tap-row")) {
+    row.dataset.type = String(next.type);
+    row.dataset.mod = String(next.mod);
+    row.dataset.code = String(next.code);
+    delete row.dataset.hasStep1;
+    paintHotkeyField(row);
+    return;
+  }
+  const steps = getRowSteps(row);
+  const idx = Math.min(editStepIndex, Math.max(steps.length, 0));
+  if (bindingIsEmpty(next)) {
+    steps.splice(idx, 1);
+  } else if (idx < steps.length) {
+    steps[idx] = next;
+  } else {
+    steps.push(next);
+  }
+  setRowSteps(row, steps);
 }
 
 const hotkeyPicker = (() => {
@@ -376,12 +479,13 @@ const hotkeyPicker = (() => {
     raf = requestAnimationFrame(positionNear);
   }
 
-  function open(targetRow) {
+  function open(targetRow, stepIndex = 0) {
     stopRecord({keep: false});
     if (anchor && anchor !== targetRow.querySelector(".hotkey-field")) {
       anchor.setAttribute("aria-expanded", "false");
     }
     row = targetRow;
+    editStepIndex = stepIndex | 0;
     anchor = row.querySelector(".hotkey-field");
     const binding = getRowBinding(row);
     pickMod = binding.type === 0 ? binding.mod : 0;
@@ -477,7 +581,7 @@ function stopRecord({keep = true} = {}) {
     btn.classList.remove("is-recording");
     if (keep) {
       const label = shortcutText(getRowBinding(recordTarget));
-      if (label !== "Set shortcut…") log(`Recorded ${label}.`);
+      if (label !== "No action") log(`Recorded ${label}.`);
       commitSettingsServer();
     }
     paintHotkeyField(recordTarget);
@@ -543,15 +647,36 @@ document.addEventListener("keydown", event => {
 }, true);
 
 function cloneKeys(keys, fallback) {
-  return (keys || fallback).map((key, i) => ({
-    mod: key?.mod ?? fallback[i].mod,
-    type: key?.type ?? fallback[i].type,
-    code: key?.code ?? fallback[i].code,
-  }));
+  return (keys || fallback).map((key, i) => {
+    const fb = fallback[i] || {mod: 0, type: 0, code: 0};
+    if (key?.steps || fb.steps) return normalizeKey(key || fb);
+    return {
+      mod: key?.mod ?? fb.mod,
+      type: key?.type ?? fb.type,
+      code: key?.code ?? fb.code,
+    };
+  });
+}
+
+function cloneKeysL0(keys, fallback) {
+  return (keys || fallback).map((key, i) => normalizeKey(key || fallback[i]));
 }
 
 function keysEmpty(keys) {
-  return !(keys || []).some(k => (k?.code ?? 0) !== 0);
+  return !(keys || []).some(k => {
+    if (Array.isArray(k?.steps)) return k.steps.some(s => (s?.code ?? 0) !== 0);
+    return (k?.code ?? 0) !== 0;
+  });
+}
+
+function serializeL0Key(k) {
+  const n = normalizeKey(k);
+  return {
+    mod: n.mod | 0,
+    type: n.type | 0,
+    code: n.code | 0,
+    steps: n.steps.map(s => ({mod: s.mod | 0, type: s.type | 0, code: s.code | 0})),
+  };
 }
 
 function settingsSnapshot() {
@@ -561,8 +686,8 @@ function settingsSnapshot() {
     layerKeys[i].map(k => ({mod: k.mod | 0, type: k.type | 0, code: k.code | 0}))
   );
   return {
-    v: 2,
-    keys_l0: layerKeys[0].map(k => ({mod: k.mod | 0, type: k.type | 0, code: k.code | 0})),
+    v: 3,
+    keys_l0: layerKeys[0].map(serializeL0Key),
     keys_fn: keysFn,
     keys_l1: keysFn[0],
     lt_mask: ltMask & 0x0f,
@@ -584,7 +709,7 @@ function applyFnLayers(keysFn, legacyL1) {
 
 function applySettingsSnapshot(data) {
   if (!data) return false;
-  layerKeys[0] = cloneKeys(data.keys_l0 || data.keys, DEFAULT_KEYS);
+  layerKeys[0] = cloneKeysL0(data.keys_l0 || data.keys, DEFAULT_KEYS);
   applyFnLayers(data.keys_fn, data.keys_l1);
   ltMask = typeof data.lt_mask === "number" ? data.lt_mask & 0x0f : 0;
   const holds = data.hold_entries || data.holdEntries;
@@ -625,18 +750,57 @@ function commitSettingsServer() {
 }
 
 function wireHotkeyRow(row, onReset) {
-  row.querySelector(".hotkey-field").addEventListener("click", () => {
+  const field = row.querySelector(".hotkey-field");
+  const openPicker = (step = 0) => {
     if (recordTarget === row) return;
-    hotkeyPicker.open(row);
+    hotkeyPicker.open(row, step);
+  };
+  field.addEventListener("click", event => {
+    const clear = event.target.closest("[data-clear-step]");
+    if (clear) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (recordTarget === row) stopRecord({keep: false});
+      hotkeyPicker.close();
+      const idx = Number(clear.dataset.clearStep);
+      const steps = getRowSteps(row);
+      steps.splice(idx, 1);
+      setRowSteps(row, steps);
+      commitSettingsServer();
+      log(`Cleared ${rowLabel(row)} step ${idx + 1}.`);
+      return;
+    }
+    const add = event.target.closest(".hotkey-add-step");
+    if (add) {
+      event.preventDefault();
+      event.stopPropagation();
+      openPicker(getRowSteps(row).length);
+      return;
+    }
+    const stepEl = event.target.closest("[data-step]");
+    openPicker(stepEl ? Number(stepEl.dataset.step) : 0);
   });
-  row.querySelector(".record").addEventListener("click", () => startRecord(row));
+  field.addEventListener("keydown", event => {
+    if (event.target.closest(".hotkey-clear") || event.target.closest(".hotkey-add-step")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openPicker(0);
+  });
+  row.querySelector(".record").addEventListener("click", () => {
+    editStepIndex = 0;
+    startRecord(row);
+  });
   row.querySelector(".clear-hotkey")?.addEventListener("click", onReset);
 }
 
 function storeTapKeys() {
   const rows = $$("#keyRows .key-row");
   if (!rows.length) return;
-  layerKeys[0] = rows.map(row => getRowBinding(row));
+  layerKeys[0] = rows.map(row => {
+    const steps = getRowSteps(row);
+    const base = steps[0] || EMPTY_BINDING;
+    return normalizeKey({...base, steps});
+  });
 }
 
 function storeHoldKeys() {
@@ -713,17 +877,24 @@ function createTapRows() {
   root.textContent = "";
   controls.forEach((name, i) => {
     const row = document.createElement("div");
-    row.className = "key-row";
+    row.className = "key-row tap-row";
     row.innerHTML = `
-      <span class="key-name">${name}</span>
-      <button type="button" class="hotkey-field" aria-haspopup="dialog" aria-expanded="false"></button>
+      <div class="key-lead">
+        <span class="key-role" aria-hidden="true">Tap</span>
+        <span class="key-name">${name}</span>
+      </div>
+      <div class="hotkey-wrap">
+        <div class="hotkey-field" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false"></div>
+      </div>
       <button type="button" class="ghost record" aria-label="Record tap for ${name}">Record</button>
       <button type="button" class="ghost clear-hotkey" aria-label="Reset tap for ${name}">Reset</button>`;
-    setRowBinding(row, layerKeys[0][i] || DEFAULT_KEYS[i]);
+    setRowSteps(row, (layerKeys[0][i] || DEFAULT_KEYS[i]).steps?.length
+      ? (layerKeys[0][i] || DEFAULT_KEYS[i]).steps
+      : [layerKeys[0][i] || DEFAULT_KEYS[i]]);
     wireHotkeyRow(row, () => {
       stopRecord({keep: false});
       hotkeyPicker.close();
-      setRowBinding(row, DEFAULT_KEYS[i]);
+      setRowSteps(row, (DEFAULT_KEYS[i].steps?.length ? DEFAULT_KEYS[i].steps : [DEFAULT_KEYS[i]]));
       commitSettingsServer();
       log(`Reset tap ${name}.`);
     });
@@ -739,15 +910,30 @@ function createHoldRows() {
   if (recordTarget?.closest?.("#holdRows")) stopRecord({keep: false});
   holdEntries = dedupeHoldEntries(holdEntries);
   root.textContent = "";
+  if (!holdEntries.length) {
+    root.textContent = "";
+    return;
+  }
   holdEntries.forEach((entry, rowIndex) => {
     const fn = entry.fn;
     const target = entry.target;
     const row = document.createElement("div");
     row.className = "key-row hold-row";
     row.innerHTML = `
-      <select class="fn-select" aria-label="Fn key">${fnSelectHtml(fn)}</select>
-      <select class="target-select" aria-label="Key while Fn held">${targetSelectHtml(target, usedTargetsForFn(fn, rowIndex))}</select>
-      <button type="button" class="hotkey-field" aria-haspopup="dialog" aria-expanded="false"></button>
+      <div class="key-lead">
+        <div class="hold-slot">
+          <span class="key-role" aria-hidden="true">Fn</span>
+          <select class="fn-select" aria-label="Fn key">${fnSelectHtml(fn)}</select>
+        </div>
+        <span class="hold-op" aria-hidden="true">+</span>
+        <div class="hold-slot">
+          <span class="key-role" aria-hidden="true">Tap</span>
+          <select class="target-select" aria-label="Key while Fn held">${targetSelectHtml(target, usedTargetsForFn(fn, rowIndex))}</select>
+        </div>
+      </div>
+      <div class="hotkey-wrap">
+        <div class="hotkey-field" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false"></div>
+      </div>
       <button type="button" class="ghost record" aria-label="Record hold action">Record</button>
       <button type="button" class="ghost remove-hold" aria-label="Remove hold mapping">Remove</button>`;
     setRowBinding(row, layerKeys[1 + fn][target] || DEFAULT_KEYS_FN[target]);
@@ -836,9 +1022,19 @@ function holdEntriesFromMask(mask) {
 }
 
 function bindingEqual(a, b) {
-  return (a?.mod | 0) === (b?.mod | 0)
-    && (a?.type | 0) === (b?.type | 0)
-    && (a?.code | 0) === (b?.code | 0);
+  const as = normalizeKey(a).steps;
+  const bs = normalizeKey(b).steps;
+  if (as.length !== bs.length) {
+    // legacy single vs steps
+    const aa = as[0] || {mod: a?.mod | 0, type: a?.type | 0, code: a?.code | 0};
+    const bb = bs[0] || {mod: b?.mod | 0, type: b?.type | 0, code: b?.code | 0};
+    if (as.length <= 1 && bs.length <= 1) {
+      return (aa.mod | 0) === (bb.mod | 0) && (aa.type | 0) === (bb.type | 0) && (aa.code | 0) === (bb.code | 0);
+    }
+    return false;
+  }
+  return as.every((s, i) =>
+    (s.mod | 0) === (bs[i].mod | 0) && (s.type | 0) === (bs[i].type | 0) && (s.code | 0) === (bs[i].code | 0));
 }
 
 function layerEqual(a, b) {
@@ -865,7 +1061,7 @@ function holdEntriesFromDevice(mask, keysL0, keysFn) {
 }
 
 function applyDeviceKeymap(config) {
-  layerKeys[0] = cloneKeys(config.keys_l0 || config.keys, DEFAULT_KEYS);
+  layerKeys[0] = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
   applyFnLayers(config.keys_fn, config.keys_l1);
   ltMask = typeof config.lt_mask === "number" ? config.lt_mask & 0x0f : 0;
   const keysFn = [1, 2, 3, 4].map(i => layerKeys[i]);
@@ -900,7 +1096,7 @@ async function refresh() {
       if (info.connected) {
         try {
           const config = await api("/api/config");
-          const deviceL0 = cloneKeys(config.keys_l0 || config.keys, DEFAULT_KEYS);
+          const deviceL0 = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
           const deviceFn = Array.isArray(config.keys_fn) && config.keys_fn.length === 4
             ? config.keys_fn.map(layer => cloneKeys(layer, DEFAULT_KEYS_FN))
             : null;
@@ -1219,7 +1415,7 @@ $("#saveConfig").addEventListener("click", async () => {
     await sendRgb();
     await post("/api/save", snapshot);
     const verify = await api("/api/config");
-    const v0 = cloneKeys(verify.keys_l0 || verify.keys, DEFAULT_KEYS);
+    const v0 = cloneKeysL0(verify.keys_l0 || verify.keys, DEFAULT_KEYS);
     const vMask = typeof verify.lt_mask === "number" ? verify.lt_mask & 0x0f : snapshot.lt_mask;
     applyFnLayers(verify.keys_fn, verify.keys_l1);
     let mismatch = !layerEqual(v0, snapshot.keys_l0) || vMask !== snapshot.lt_mask;
@@ -1231,7 +1427,7 @@ $("#saveConfig").addEventListener("click", async () => {
     if (mismatch) {
       log(`Save verify mismatch — device L0 [${v0.map(k => k.code).join(", ")}] LT ${vMask}`);
       // Keep what we wrote; don't let a bad/old-firmware read wipe mods or bleed Fn layers in UI.
-      layerKeys[0] = cloneKeys(snapshot.keys_l0, DEFAULT_KEYS);
+      layerKeys[0] = cloneKeysL0(snapshot.keys_l0, DEFAULT_KEYS);
       applyFnLayers(snapshot.keys_fn, snapshot.keys_l1);
       ltMask = snapshot.lt_mask & 0x0f;
     } else {

@@ -86,7 +86,8 @@ class DeviceTests(unittest.TestCase):
         MacroPad().set_keymap(keys, layer=1)
         self.assertEqual(FakeDevice.last_write[1], protocol.SET_KEYMAP)
         self.assertEqual(FakeDevice.last_write[2], 1)
-        self.assertEqual(FakeDevice.last_write[3:6], bytes([0, 0, 0x04]))
+        self.assertEqual(FakeDevice.last_write[3], 0)  # step
+        self.assertEqual(FakeDevice.last_write[4:7], bytes([0, 0, 0x04]))
 
     @patch("app.device.hid", FakeHid)
     def test_set_lt_mask(self):

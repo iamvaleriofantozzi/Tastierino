@@ -86,11 +86,17 @@ class MacroPad:
             keys.append(item)
         return keys
 
-    def get_keymap(self, layer=0):
+    def get_keymap(self, layer=0, step=0, protocol_version=None):
         if layer not in range(protocol.LAYER_COUNT):
             raise DeviceError("Invalid keymap layer")
-        r = self.exchange(protocol.GET_KEYMAP, bytes([layer]))
-        return self._parse_keys(r, 3)
+        if step not in range(protocol.MACRO_STEPS):
+            raise DeviceError("Invalid keymap step")
+        if step and layer != 0:
+            raise DeviceError("Only Tap layer supports multi-step")
+        modern = (protocol_version is None) or (protocol_version >= 4)
+        payload = bytes([layer, step]) if modern else bytes([layer])
+        r = self.exchange(protocol.GET_KEYMAP, payload)
+        return self._parse_keys(r, 4 if modern else 3)
 
     def get_config(self):
         r = self.exchange(protocol.GET_CONFIG)
@@ -98,18 +104,28 @@ class MacroPad:
         lighting = self.get_lighting()
         protocol_version = r[2]
         lt_mask = r[3] & 0x0F
+        if protocol_version >= 4:
+            try:
+                keys = self._merge_l0_steps(
+                    self.get_keymap(0, 0, protocol_version=protocol_version),
+                    self.get_keymap(0, 1, protocol_version=protocol_version),
+                )
+            except DeviceError:
+                pass
         keys_fn = []
         if protocol_version >= 3:
             for fn in range(protocol.LT_CAPABLE):
                 try:
-                    keys_fn.append(self.get_keymap(1 + fn))
+                    keys_fn.append(self.get_keymap(1 + fn, 0, protocol_version=protocol_version))
                 except DeviceError:
-                    keys_fn.append([dict(k) for k in keys])
+                    keys_fn.append([{"mod": k["mod"], "type": k["type"], "code": k["code"]} for k in keys])
         else:
             try:
-                shared = self.get_keymap(1) if protocol_version >= 2 else [dict(k) for k in keys]
+                shared = self.get_keymap(1, protocol_version=protocol_version) if protocol_version >= 2 else [
+                    {"mod": k["mod"], "type": k["type"], "code": k["code"]} for k in keys
+                ]
             except DeviceError:
-                shared = [dict(k) for k in keys]
+                shared = [{"mod": k["mod"], "type": k["type"], "code": k["code"]} for k in keys]
             keys_fn = [[dict(k) for k in shared] for _ in range(protocol.LT_CAPABLE)]
         return {
             "protocol": protocol_version,
@@ -121,7 +137,52 @@ class MacroPad:
             "lt_mask": lt_mask,
             "colors": lighting["colors"],
             "pulse": lighting["pulse"],
+            "macro_steps": protocol.MACRO_STEPS if protocol_version >= 4 else 1,
         }
+
+    @staticmethod
+    def _binding_active(key):
+        return bool(key.get("code") or key.get("mod") or key.get("type"))
+
+    @classmethod
+    def _merge_l0_steps(cls, step0, step1):
+        merged = []
+        for a, b in zip(step0, step1):
+            steps = []
+            base = {"mod": a["mod"], "type": a["type"], "code": a["code"]}
+            if cls._binding_active(base):
+                steps.append(dict(base))
+            extra = {"mod": b["mod"], "type": b["type"], "code": b["code"]}
+            if cls._binding_active(extra):
+                steps.append(dict(extra))
+            item = dict(steps[0]) if steps else {"mod": 0, "type": 0, "code": 0}
+            item["steps"] = steps
+            if "name" in a:
+                item["name"] = a["name"]
+            merged.append(item)
+        return merged
+
+    def set_keymap(self, keys, layer=0, step=0):
+        if layer not in range(protocol.LAYER_COUNT):
+            raise DeviceError("Invalid keymap layer")
+        if step not in range(protocol.MACRO_STEPS):
+            raise DeviceError("Invalid keymap step")
+        if step and layer != 0:
+            raise DeviceError("Only Tap layer supports multi-step")
+        if len(keys) != 6:
+            raise DeviceError("Six mappings required")
+        flat = []
+        for key in keys:
+            if isinstance(key.get("steps"), list):
+                if step < len(key["steps"]):
+                    src = key["steps"][step]
+                else:
+                    src = {"mod": 0, "type": 0, "code": 0}
+            else:
+                src = key if step == 0 else {"mod": 0, "type": 0, "code": 0}
+            flat.append((int(src.get("mod", 0)), int(src.get("type", 0)), int(src.get("code", 0))))
+        payload = bytes([layer, step]) + bytes(value for triple in flat for value in triple)
+        self.exchange(protocol.SET_KEYMAP, payload)
 
     def get_lighting(self):
         r = self.exchange(protocol.GET_LIGHTING)
@@ -150,16 +211,6 @@ class MacroPad:
             raise DeviceError("Invalid pulse flags")
         mask = sum((1 << i) for i, flag in enumerate(enabled) if flag)
         self.exchange(protocol.SET_PULSE, bytes([mask]))
-
-    def set_keymap(self, keys, layer=0):
-        if layer not in range(protocol.LAYER_COUNT):
-            raise DeviceError("Invalid keymap layer")
-        if len(keys) != 6:
-            raise DeviceError("Six mappings required")
-        payload = bytes([layer]) + bytes(
-            value for key in keys for value in (key["mod"], key["type"], key["code"])
-        )
-        self.exchange(protocol.SET_KEYMAP, payload)
 
     def set_lt_mask(self, mask):
         if not isinstance(mask, int) or not 0 <= mask <= 0x0F:

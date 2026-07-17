@@ -40,23 +40,40 @@ DEFAULTS = {
 
 
 def _clean_key(item: dict) -> dict:
-    return {
+    steps_in = item.get("steps")
+    if isinstance(steps_in, list):
+        steps = []
+        for step in steps_in[:2]:
+            cleaned = {
+                "mod": int(step["mod"]) & 0xFF,
+                "type": int(step["type"]) & 0xFF,
+                "code": int(step["code"]) & 0xFF,
+            }
+            if cleaned["type"] not in (0, 1, 2):
+                raise ValueError("Invalid key type")
+            if cleaned["code"] or cleaned["mod"] or cleaned["type"]:
+                steps.append(cleaned)
+        base = dict(steps[0]) if steps else {"mod": 0, "type": 0, "code": 0}
+        base["steps"] = steps
+        return base
+    cleaned = {
         "mod": int(item["mod"]) & 0xFF,
         "type": int(item["type"]) & 0xFF,
         "code": int(item["code"]) & 0xFF,
     }
+    if cleaned["type"] not in (0, 1, 2):
+        raise ValueError("Invalid key type")
+    steps = []
+    if cleaned["code"] or cleaned["mod"] or cleaned["type"]:
+        steps.append({"mod": cleaned["mod"], "type": cleaned["type"], "code": cleaned["code"]})
+    cleaned["steps"] = steps
+    return cleaned
 
 
 def _clean_keys(keys) -> list:
     if not isinstance(keys, list) or len(keys) != 6:
         raise ValueError("Six key mappings required")
-    out = []
-    for key in keys:
-        cleaned = _clean_key(key)
-        if cleaned["type"] not in (0, 1, 2):
-            raise ValueError("Invalid key type")
-        out.append(cleaned)
-    return out
+    return [_clean_key(key) for key in keys]
 
 
 def _clean_keys_fn(keys_fn, legacy_l1=None) -> list:

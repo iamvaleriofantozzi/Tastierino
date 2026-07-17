@@ -1,7 +1,8 @@
 #pragma once
 
 #define RAW_PACKET_SIZE       32
-#define PROTOCOL_VERSION      3
+#define PROTOCOL_VERSION      4
+#define MACRO_STEPS           2  /* max sequential taps on layer 0 (Tap) */
 
 #define CMD_SET_RGB           0x01
 #define CMD_GET_CONFIG        0x02

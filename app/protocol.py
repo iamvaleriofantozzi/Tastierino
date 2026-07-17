@@ -19,3 +19,4 @@ RESPONSE = 0x80
 CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")
 LT_CAPABLE = 4  # first four controls support long-press Fn
 LAYER_COUNT = 5  # 0 = tap, 1..4 = Fn key 0..3
+MACRO_STEPS = 2  # sequential taps on layer 0 (Tap)
