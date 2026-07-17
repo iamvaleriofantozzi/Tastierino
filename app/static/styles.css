@@ -523,6 +523,82 @@ main {
 }
 
 /* --- Lighting rows ----------------------------------------------------------- */
+.auto-off-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border: var(--hairline) solid var(--glass-stroke-soft);
+  border-radius: var(--radius-sm);
+  background: var(--row);
+  box-shadow: inset 0 var(--hairline) 0 var(--specular-soft);
+}
+
+.auto-off-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: var(--hairline) solid var(--glass-stroke-soft);
+  background: var(--glass);
+  color: var(--muted);
+  font: 600 13px/1 var(--font, inherit);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.auto-off-toggle:hover {
+  border-color: var(--glass-stroke);
+  color: var(--text);
+}
+
+.auto-off-toggle.is-on {
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 45%, transparent);
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+}
+
+.auto-off-toggle svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.auto-off-timeout {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) 4.5ch;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 220px;
+  min-width: min(220px, 100%);
+  opacity: 0.45;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.auto-off-row.is-enabled .auto-off-timeout {
+  opacity: 1;
+}
+
+.auto-off-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.auto-off-timeout output {
+  font: 550 12px/1 ui-monospace, "SF Mono", monospace;
+  color: var(--text);
+  text-align: right;
+  min-width: 4.5ch;
+}
+
 .light-rows {
   display: grid;
   gap: 8px;

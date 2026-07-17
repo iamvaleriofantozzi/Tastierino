@@ -86,6 +86,12 @@ class Handler(BaseHTTPRequestHandler):
                     if len(pulse) != 3 or any(not isinstance(flag, bool) for flag in pulse):
                         raise ValueError("Invalid pulse flags")
                     DEVICE.set_pulse(pulse)
+                if "auto_off_enabled" in data or "auto_off_steps" in data:
+                    enabled = bool(data.get("auto_off_enabled", False))
+                    steps = int(data.get("auto_off_steps", 9))
+                    if not 0 <= steps <= 33:
+                        raise ValueError("Invalid auto-off timeout")
+                    DEVICE.set_auto_off(enabled, steps)
                 self.send_json(200, {"ok": True})
             elif path == "/api/keymap":
                 data = self.read_json()
@@ -156,7 +162,16 @@ class Handler(BaseHTTPRequestHandler):
                         time.sleep(1)
                     except DeviceError:
                         pass
-                self.send_json(200, firmware.flash(source))
+                result = firmware.flash(source)
+                # Boot anim often finishes while wchisp still runs — replay on reconnect
+                result["wave"] = False
+                try:
+                    if DEVICE.wait_until_ready(timeout=12.0):
+                        DEVICE.play_wave_pulse(duration=3.0)
+                        result["wave"] = True
+                except DeviceError:
+                    pass
+                self.send_json(200, result)
             else:
                 self.send_json(404, {"error": "Unknown endpoint"})
         except (DeviceError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:

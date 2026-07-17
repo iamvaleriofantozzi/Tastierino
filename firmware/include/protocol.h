@@ -1,7 +1,7 @@
 #pragma once
 
 #define RAW_PACKET_SIZE       32
-#define PROTOCOL_VERSION      4
+#define PROTOCOL_VERSION      5
 #define MACRO_STEPS           2  /* max sequential taps on layer 0 (Tap) */
 
 #define CMD_SET_RGB           0x01
@@ -15,6 +15,7 @@
 #define CMD_SET_PULSE         0x09
 #define CMD_GET_KEYMAP        0x0A
 #define CMD_SET_LT_MASK       0x0B
+#define CMD_SET_AUTO_OFF      0x0C
 #define CMD_RESPONSE          0x80
 
 #define STATUS_OK             0
@@ -27,3 +28,5 @@
 #define LED_COUNT             3
 #define KEY_FIELDS            3
 #define RGB_FIELDS            3
+#define AUTO_OFF_TABLE_LEN    34 /* 0,1,3,5 + 10..300/10 */
+#define AUTO_OFF_MAX_INDEX    33

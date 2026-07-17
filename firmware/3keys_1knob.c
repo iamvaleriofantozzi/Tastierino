@@ -17,17 +17,21 @@ void USB_ISR(void) __interrupt(INT_NO_USB) { USB_interrupt(); }
 #define MOUSE 2
 #define EEPROM_MAGIC_0 0x4d
 #define EEPROM_MAGIC_1 0x50
-#define EEPROM_VERSION 6
+#define EEPROM_VERSION 8
 #define EEPROM_V1_SIZE 32
 #define EEPROM_V2_SIZE 34
 #define EEPROM_V3_SIZE 35
 #define EEPROM_V4_SIZE 54
 #define EEPROM_V5_SIZE 108
-#define EEPROM_SIZE 126
+#define EEPROM_V6_SIZE 126
+#define EEPROM_V7_SIZE 128
+#define EEPROM_SIZE 128
 #define HOLD_TICKS 40   // ~200 ms @ 5 ms/loop — enter Fn, never emit tap
 #define MIN_TAP_TICKS 4 // ~20 ms — ignore bounce "releases" as taps
 #define DEBOUNCE_TICKS 2
 #define SEQ_GAP_MS 40   // delay between sequential L0 taps
+#define AUTO_OFF_TICKS_PER_SEC 200U // 1s @ 5ms/loop
+#define LED_FADE_STEP 9               // ~150ms full fade @ 5ms/tick
 
 struct binding {
   uint8_t mod;
@@ -47,6 +51,11 @@ struct RGBColor colors[LED_COUNT];
 uint8_t brightness[LED_COUNT];
 uint8_t pulse_t[LED_COUNT];
 uint8_t pulse_en;
+uint8_t auto_off_en;     // 1 = idle auto-off active
+uint8_t auto_off_index;  // index into auto_off_sec_table
+uint8_t led_fade;        // current brightness gate 0..255
+uint8_t led_fade_tgt;    // 0 = off, 255 = on (always via fade)
+uint16_t idle_ticks;
 uint8_t lt_mask;   // bits 0..3 = LT on Button1..3 + Enc click
 uint8_t fn_mask;   // bits 0..3 = keys currently held as Fn (bits 0..2 → LED white)
 uint8_t key_last[KEY_COUNT];
@@ -64,6 +73,41 @@ static const uint8_t pulse_curve[PULSE_LEN] = {
   200, 140, 100, 90, 100, 125, 155, 180,
   200, 218, 232, 242, 248, 252, 254, 255
 };
+
+// Power-on white/blue wave pulse (before USB). Host replays after flash.
+#define BOOT_WAVE_FRAMES 240
+#define BOOT_WAVE_SPEED 3
+#define BOOT_WAVE_PHASE 85 // ~256/3 — crest lag between keys
+
+void boot_wave_pulse(void) {
+  uint16_t frame;
+  uint8_t i;
+  uint8_t phase;
+  uint8_t t;
+  uint8_t mix;
+  uint8_t r;
+  uint8_t g;
+
+  for (frame = 0; frame < BOOT_WAVE_FRAMES; frame++) {
+    phase = (uint8_t)(frame * BOOT_WAVE_SPEED);
+    EA = 0;
+    for (i = 0; i < LED_COUNT; i++) {
+      t = phase + i * BOOT_WAVE_PHASE;
+      // triangle 0→255→0 — crest travels key→key
+      if (t < 128)
+        mix = t << 1;
+      else
+        mix = (uint8_t)((255 - t) << 1);
+      // mix 0 = blue (0,50,255), 255 = white
+      r = mix;
+      g = 50 + (uint8_t)(((uint16_t)205 * mix) >> 8);
+      NEO_writeColor(r, g, 255);
+    }
+    EA = 1;
+    DLY_ms(12);
+    WDT_reset();
+  }
+}
 
 uint8_t eeprom_read_byte(uint8_t addr) {
   ROM_ADDR_H = DATA_FLASH_ADDR >> 8;
@@ -90,6 +134,27 @@ void eeprom_write_byte(__data uint8_t addr, __xdata uint8_t val) {
   SAFE_MOD = 0;
 }
 
+// Auto-off timeout table (seconds): 0,1,3,5 then 10..300 step 10
+static const uint16_t __code auto_off_sec_table[AUTO_OFF_TABLE_LEN] = {
+  0, 1, 3, 5,
+  10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120,
+  130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240,
+  250, 260, 270, 280, 290, 300
+};
+
+uint8_t auto_off_index_from_sec(uint16_t sec) {
+  uint8_t i;
+  for (i = 0; i < AUTO_OFF_TABLE_LEN; i++) {
+    if (auto_off_sec_table[i] >= sec)
+      return i;
+  }
+  return AUTO_OFF_MAX_INDEX;
+}
+
+uint8_t leds_any_brightness(void) {
+  return brightness[0] | brightness[1] | brightness[2];
+}
+
 uint8_t scale_color(uint8_t value, uint8_t led) {
   uint8_t bri = brightness[led];
   if (pulse_t[led])
@@ -97,20 +162,102 @@ uint8_t scale_color(uint8_t value, uint8_t led) {
   return ((uint16_t)value * ((uint16_t)bri + 1)) >> 8;
 }
 
+uint8_t apply_led_fade(uint8_t value) {
+  if (led_fade == 0)
+    return 0;
+  if (led_fade == 255)
+    return value;
+  return ((uint16_t)value * ((uint16_t)led_fade + 1)) >> 8;
+}
+
+void leds_fade_tick(void) {
+  if (led_fade < led_fade_tgt) {
+    if ((uint8_t)(led_fade_tgt - led_fade) <= LED_FADE_STEP)
+      led_fade = led_fade_tgt;
+    else
+      led_fade += LED_FADE_STEP;
+  } else if (led_fade > led_fade_tgt) {
+    if ((uint8_t)(led_fade - led_fade_tgt) <= LED_FADE_STEP)
+      led_fade = led_fade_tgt;
+    else
+      led_fade -= LED_FADE_STEP;
+  }
+}
+
 void NEO_update(void) {
   uint8_t i;
   EA = 0;
   for (i = 0; i < LED_COUNT; i++) {
-    if (fn_mask & (1 << i))
-      NEO_writeColor(255, 255, 255); // Fn key only: white @ max
+    if (led_fade == 0)
+      NEO_writeColor(0, 0, 0);
+    else if (fn_mask & (1 << i))
+      NEO_writeColor(apply_led_fade(255), apply_led_fade(255), apply_led_fade(255));
     else
-      NEO_writeColor(scale_color(colors[i].r, i), scale_color(colors[i].g, i),
-                     scale_color(colors[i].b, i));
+      NEO_writeColor(apply_led_fade(scale_color(colors[i].r, i)),
+                     apply_led_fade(scale_color(colors[i].g, i)),
+                     apply_led_fade(scale_color(colors[i].b, i)));
   }
   EA = 1;
   for (i = 0; i < LED_COUNT; i++)
     if (pulse_t[i])
       pulse_t[i]--;
+  leds_fade_tick();
+}
+
+// Request lights on (fade in) — no-op if brightness is all zero
+void leds_wake(void) {
+  idle_ticks = 0;
+  if (leds_any_brightness())
+    led_fade_tgt = 255;
+  else
+    led_fade_tgt = 0;
+}
+
+// Brightness/RGB changed: fade toward on or off
+void leds_on_output_change(void) {
+  idle_ticks = 0;
+  if (leds_any_brightness())
+    led_fade_tgt = 255;
+  else
+    led_fade_tgt = 0;
+}
+
+void leds_idle_tick(void) {
+  uint16_t limit;
+  uint16_t sec;
+
+  // No brightness → always fade off (Turn all off, bri=0, …)
+  if (!leds_any_brightness()) {
+    led_fade_tgt = 0;
+    return;
+  }
+
+  if (!auto_off_en) {
+    led_fade_tgt = 255;
+    return;
+  }
+
+  // Held key / Fn → fade on and reset idle
+  if (key_last[0] || key_last[1] || key_last[2] || key_last[3] || fn_mask) {
+    idle_ticks = 0;
+    led_fade_tgt = 255;
+    return;
+  }
+
+  if (led_fade_tgt == 0)
+    return;
+
+  sec = auto_off_sec_table[auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
+                                                               : auto_off_index];
+  if (sec == 0) {
+    led_fade_tgt = 0;
+    return;
+  }
+  limit = sec * AUTO_OFF_TICKS_PER_SEC;
+  if (idle_ticks < 65535)
+    idle_ticks++;
+  if (idle_ticks >= limit)
+    led_fade_tgt = 0;
 }
 
 void copy_layer(uint8_t dst, uint8_t src) {
@@ -168,6 +315,8 @@ void defaults_load(void) {
     brightness[i] = 160;
   pulse_en = 0x07;
   lt_mask = 0x00; // opt-in via UI Add
+  auto_off_en = 0;
+  auto_off_index = 9; // 60s
 }
 
 uint8_t config_checksum(uint8_t version, uint8_t size) {
@@ -198,6 +347,10 @@ void config_load(void) {
     size = EEPROM_V4_SIZE;
   else if (version == 5)
     size = EEPROM_V5_SIZE;
+  else if (version == 6)
+    size = EEPROM_V6_SIZE;
+  else if (version == 7)
+    size = EEPROM_V7_SIZE;
   else
     size = EEPROM_SIZE;
 
@@ -297,6 +450,20 @@ void config_load(void) {
     pulse_en = version >= 3 ? (eeprom_read_byte(34) & 0x07) : 0x07;
     lt_mask = 0x00;
   }
+
+  if (version >= 8) {
+    auto_off_en = eeprom_read_byte(126) & 1;
+    auto_off_index = eeprom_read_byte(127);
+    if (auto_off_index > AUTO_OFF_MAX_INDEX)
+      auto_off_index = AUTO_OFF_MAX_INDEX;
+  } else if (version >= 7) {
+    // v7: byte 127 = steps * 10 seconds
+    auto_off_en = eeprom_read_byte(126) & 1;
+    auto_off_index = auto_off_index_from_sec((uint16_t)eeprom_read_byte(127) * 10);
+  } else {
+    auto_off_en = 0;
+    auto_off_index = 9;
+  }
 }
 
 void config_save(void) {
@@ -331,6 +498,9 @@ void config_save(void) {
   eeprom_write_byte(123, brightness[2]);
   eeprom_write_byte(124, pulse_en & 0x07);
   eeprom_write_byte(125, lt_mask & 0x0f);
+  eeprom_write_byte(126, auto_off_en & 1);
+  eeprom_write_byte(127, auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
+                                                             : auto_off_index);
   for (i = 4; i < EEPROM_SIZE; i++)
     checksum ^= eeprom_read_byte(i);
   eeprom_write_byte(3, checksum);
@@ -392,6 +562,7 @@ void process_key(uint8_t idx, uint8_t current, uint8_t led) {
   uint8_t lt = (idx < LT_KEY_COUNT) && (lt_mask & (1 << idx));
 
   if (current && !was) {
+    leds_wake();
     if (led < LED_COUNT && (pulse_en & (1 << led)) && !(fn_mask & (1 << led)))
       pulse_t[led] = PULSE_LEN;
     if (lt) {
@@ -512,6 +683,7 @@ void raw_handle(void) {
         colors[i].g = rawPacket[2 + i * 3];
         colors[i].b = rawPacket[3 + i * 3];
       }
+      leds_on_output_change();
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_BRIGHTNESS) {
@@ -525,6 +697,7 @@ void raw_handle(void) {
         for (i = 0; i < LED_COUNT; i++)
           brightness[i] = rawPacket[1];
       }
+      leds_on_output_change();
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_KEYMAP) {
@@ -590,11 +763,25 @@ void raw_handle(void) {
       rawPacket[7 + i * 3] = colors[i].b;
     }
     rawPacket[14] = pulse_en & 0x07;
+    rawPacket[15] = auto_off_en & 1;
+    rawPacket[16] = auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
+                                                        : auto_off_index;
   } else if (command == CMD_SET_PULSE) {
     if (count < 2)
       raw_response(command, STATUS_BAD_LENGTH);
     else {
       pulse_en = rawPacket[1] & 0x07;
+      raw_response(command, STATUS_OK);
+    }
+  } else if (command == CMD_SET_AUTO_OFF) {
+    if (count < 3)
+      raw_response(command, STATUS_BAD_LENGTH);
+    else {
+      auto_off_en = rawPacket[1] & 1;
+      auto_off_index = rawPacket[2];
+      if (auto_off_index > AUTO_OFF_MAX_INDEX)
+        auto_off_index = AUTO_OFF_MAX_INDEX;
+      leds_wake();
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_PING || command == CMD_ENTER_BOOTLOADER) {
@@ -625,8 +812,10 @@ void main(void) {
 
   CLK_config();
   DLY_ms(5);
-  KBD_init();
   WDT_start();
+  // LEDs first — visible ASAP after flash reboot, before USB enum delay
+  boot_wave_pulse();
+  KBD_init();
   defaults_load();
   config_load();
   fn_mask = 0;
@@ -643,6 +832,9 @@ void main(void) {
   }
   for (i = 0; i < LED_COUNT; i++)
     pulse_t[i] = 0;
+  // Fade in after boot wave
+  led_fade = 0;
+  leds_wake();
 
   while (1) {
     process_key_debounced(0, !PIN_read(PIN_KEY1), 0);
@@ -651,6 +843,7 @@ void main(void) {
     process_key_debounced(3, !PIN_read(PIN_ENC_SW), 0xff);
 
     if (!PIN_read(PIN_ENC_A)) {
+      leds_wake();
       layer = active_layer();
       i = PIN_read(PIN_ENC_B) ? 4 : 5;
       DLY_ms(10);
@@ -663,6 +856,7 @@ void main(void) {
     }
 
     raw_handle();
+    leds_idle_tick();
     NEO_update();
     DLY_ms(5);
     WDT_reset();

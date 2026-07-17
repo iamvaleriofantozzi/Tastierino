@@ -137,6 +137,8 @@ class MacroPad:
             "lt_mask": lt_mask,
             "colors": lighting["colors"],
             "pulse": lighting["pulse"],
+            "auto_off_enabled": lighting["auto_off_enabled"],
+            "auto_off_steps": lighting["auto_off_steps"],
             "macro_steps": protocol.MACRO_STEPS if protocol_version >= 4 else 1,
         }
 
@@ -191,10 +193,16 @@ class MacroPad:
             offset = 5 + i * 3
             colors.append([r[offset], r[offset + 1], r[offset + 2]])
         mask = r[14] if len(r) > 14 else 0x07
+        auto_off_enabled = bool(r[15] & 1) if len(r) > 15 else False
+        auto_off_steps = r[16] if len(r) > 16 else 9
+        if auto_off_steps > protocol.AUTO_OFF_MAX_INDEX:
+            auto_off_steps = protocol.AUTO_OFF_MAX_INDEX
         return {
             "brightness": [r[2], r[3], r[4]],
             "colors": colors,
             "pulse": [bool(mask & (1 << i)) for i in range(3)],
+            "auto_off_enabled": auto_off_enabled,
+            "auto_off_steps": auto_off_steps,
         }
 
     def set_rgb(self, colors):
@@ -212,6 +220,14 @@ class MacroPad:
         mask = sum((1 << i) for i, flag in enumerate(enabled) if flag)
         self.exchange(protocol.SET_PULSE, bytes([mask]))
 
+    def set_auto_off(self, enabled, steps):
+        if not isinstance(enabled, bool):
+            raise DeviceError("Invalid auto-off flag")
+        steps = int(steps)
+        if not 0 <= steps <= protocol.AUTO_OFF_MAX_INDEX:
+            raise DeviceError("Invalid auto-off timeout")
+        self.exchange(protocol.SET_AUTO_OFF, bytes([1 if enabled else 0, steps]))
+
     def set_lt_mask(self, mask):
         if not isinstance(mask, int) or not 0 <= mask <= 0x0F:
             raise DeviceError("Invalid LT mask")
@@ -222,3 +238,43 @@ class MacroPad:
 
     def enter_bootloader(self):
         self.exchange(protocol.ENTER_BOOTLOADER, timeout=300)
+
+    def wait_until_ready(self, timeout=12.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.enumerate():
+                time.sleep(0.25)
+                try:
+                    self.exchange(protocol.PING, timeout=500)
+                    return True
+                except DeviceError:
+                    pass
+            time.sleep(0.15)
+        return False
+
+    @staticmethod
+    def _wave_led_color(phase, led_index):
+        """White↔blue traveling wave. phase 0..255, led_index 0..2."""
+        t = (phase + led_index * 85) & 0xFF
+        mix = (t << 1) & 0xFF if t < 128 else ((255 - t) << 1) & 0xFF
+        # mix 0 = blue (0,50,255), 255 = white
+        return [mix, 50 + ((205 * mix) >> 8), 255]
+
+    def play_wave_pulse(self, duration=3.0, frame_ms=40):
+        """White/blue wave pulse — used after flash (boot anim often missed)."""
+        saved = self.get_lighting()
+        try:
+            self.set_brightness([255, 255, 255])
+            phase = 0
+            started = time.monotonic()
+            while time.monotonic() - started < duration:
+                colors = [self._wave_led_color(phase, i) for i in range(3)]
+                self.set_rgb(colors)
+                phase = (phase + 8) & 0xFF
+                time.sleep(frame_ms / 1000.0)
+        finally:
+            self.set_rgb(saved["colors"])
+            self.set_brightness(saved["brightness"])
+
+    # Back-compat alias
+    play_rainbow_pulse = play_wave_pulse

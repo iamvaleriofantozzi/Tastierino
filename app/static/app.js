@@ -7,6 +7,10 @@ const QUICK_COLORS = ["#ff0000","#ff8c00","#ffd400","#00ff50","#0050ff","#ffffff
 let colors = [[0,80,255],[0,255,80],[255,20,0]];
 let brightness = [160,160,160];
 let pulse = [true, true, true];
+let autoOffEnabled = false;
+let autoOffSteps = 9; // index into AUTO_OFF_SECONDS → 60s
+const AUTO_OFF_SECONDS = [0, 1, 3, 5, ...Array.from({length: 30}, (_, i) => (i + 1) * 10)];
+const AUTO_OFF_MAX_INDEX = AUTO_OFF_SECONDS.length - 1;
 let uploaded = false;
 let rgbTimer;
 let ltMask = 0;
@@ -150,11 +154,41 @@ function paintPreview() {
     btn.classList.toggle("is-on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
+  paintAutoOff();
+}
+
+function formatAutoOff(index) {
+  const sec = AUTO_OFF_SECONDS[Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, index | 0))] ?? 0;
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m}m ${String(s).padStart(2, "0")}s` : `${m}m`;
+}
+
+function paintAutoOff() {
+  const row = $(".auto-off-row");
+  const toggle = $("#autoOffToggle");
+  const slider = $("#autoOffSteps");
+  const value = $("#autoOffValue");
+  if (!toggle || !slider || !value) return;
+  const on = !!autoOffEnabled;
+  toggle.classList.toggle("is-on", on);
+  toggle.setAttribute("aria-pressed", on ? "true" : "false");
+  row?.classList.toggle("is-enabled", on);
+  slider.disabled = !on;
+  slider.value = String(autoOffSteps);
+  value.value = formatAutoOff(autoOffSteps);
 }
 
 async function sendRgb() {
   try {
-    await post("/api/rgb", {colors, brightness, pulse});
+    await post("/api/rgb", {
+      colors,
+      brightness,
+      pulse,
+      auto_off_enabled: !!autoOffEnabled,
+      auto_off_steps: autoOffSteps | 0,
+    });
   } catch (error) { log(`LED: ${error.message}`); }
 }
 
@@ -695,6 +729,8 @@ function settingsSnapshot() {
     colors: colors.map(c => c.map(n => n | 0)),
     brightness: brightness.map(n => n | 0),
     pulse: pulse.map(Boolean),
+    auto_off_enabled: !!autoOffEnabled,
+    auto_off_steps: autoOffSteps | 0,
   };
 }
 
@@ -726,6 +762,12 @@ function applySettingsSnapshot(data) {
   }
   if (Array.isArray(data.pulse) && data.pulse.length === 3) {
     pulse = data.pulse.map(Boolean);
+  }
+  if (typeof data.auto_off_enabled === "boolean") {
+    autoOffEnabled = data.auto_off_enabled;
+  }
+  if (typeof data.auto_off_steps === "number") {
+    autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, data.auto_off_steps | 0));
   }
   return !keysEmpty(layerKeys[0]);
 }
@@ -1075,6 +1117,12 @@ function applyDeviceKeymap(config) {
   if (Array.isArray(config.pulse) && config.pulse.length === 3) {
     pulse = config.pulse.map(Boolean);
   }
+  if (typeof config.auto_off_enabled === "boolean") {
+    autoOffEnabled = config.auto_off_enabled;
+  }
+  if (typeof config.auto_off_steps === "number") {
+    autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, config.auto_off_steps | 0));
+  }
 }
 
 document.addEventListener("click", event => {
@@ -1358,6 +1406,20 @@ $$('[data-brightness]').forEach(input => input.addEventListener("input", () => {
   queueRgb();
 }));
 
+$("#autoOffToggle")?.addEventListener("click", () => {
+  autoOffEnabled = !autoOffEnabled;
+  paintAutoOff();
+  queueRgb();
+  queueSettingsSave();
+});
+
+$("#autoOffSteps")?.addEventListener("input", () => {
+  autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, Number($("#autoOffSteps").value) | 0));
+  paintAutoOff();
+  queueRgb();
+  queueSettingsSave();
+});
+
 $(".light-rows")?.addEventListener("click", event => {
   const picker = event.target.closest("[data-picker]");
   if (picker) {
@@ -1452,7 +1514,7 @@ $("#loadDeviceKeymap")?.addEventListener("click", () => loadKeymapFromDevice());
 $("#buildFirmware").addEventListener("click", async event => { openFirmwareCard(); const b=event.currentTarget;b.disabled=true;log("Building firmware…");try{const r=await post("/api/build");$("#firmwareInfo").textContent=`${r.firmware.size} bytes · SHA-256 ${r.firmware.sha256.slice(0,16)}…`;log(r.log.trim());}catch(e){log(`Build failed: ${e.message}`);}finally{b.disabled=false;} });
 $("#firmwareFile").addEventListener("change", async event => { const file=event.target.files[0];if(!file)return;try{const r=await api("/api/firmware/upload",{method:"POST",headers:{"Content-Type":"application/octet-stream","X-Macropad-Client":"1"},body:await file.arrayBuffer()});uploaded=true;$("#uploadInfo").textContent=`${file.name} · ${r.size} bytes · ${r.sha256.slice(0,12)}…`;log("External firmware validated.");}catch(e){uploaded=false;log(`Upload: ${e.message}`);} });
 $("#flashFirmware").addEventListener("click", () => { openFirmwareCard(); $("#flashDialog").showModal(); });
-$("#confirmFlash").addEventListener("click", async event => { event.preventDefault();$("#flashDialog").close();openFirmwareCard();log("Flash started: do not unplug USB…");try{const r=await post("/api/flash",{confirm:true,uploaded,enter_bootloader:true});log(r.log.trim());log("Flash and verify completed.");setTimeout(refresh,1500);}catch(e){log(`Flash failed: ${e.message}`);} });
+$("#confirmFlash").addEventListener("click", async event => { event.preventDefault();$("#flashDialog").close();openFirmwareCard();log("Flash started: do not unplug USB…");try{const r=await post("/api/flash",{confirm:true,uploaded,enter_bootloader:true});log(r.log.trim());log("Flash and verify completed.");if(r.wave)log("White/blue wave pulse played on device LEDs.");else log("Device back, but wave pulse skipped (no HID yet).");setTimeout(refresh,800);}catch(e){log(`Flash failed: ${e.message}`);} });
 $("#clearLog").addEventListener("click", () => $("#log").textContent="Log cleared.");
 
 (function initTheme() {

@@ -41,6 +41,17 @@
     <main>
       <section class="card lighting">
         <div class="section-title"><div><h2>Lighting</h2></div><button id="lightsOff" class="ghost">Turn all off</button></div>
+        <div class="auto-off-row" aria-label="LED auto-off">
+          <button type="button" id="autoOffToggle" class="auto-off-toggle" aria-pressed="false" title="Auto-off LEDs after idle">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span>Auto-off</span>
+          </button>
+          <label class="auto-off-timeout">
+            <span class="auto-off-label">Timeout</span>
+            <input type="range" id="autoOffSteps" min="0" max="33" step="1" value="9" disabled aria-label="Auto-off timeout">
+            <output id="autoOffValue">1m</output>
+          </label>
+        </div>
         <div class="light-rows" aria-label="Per-control lighting">
           <div class="light-row" data-led="0">
             <div class="light-swatch key-preview">

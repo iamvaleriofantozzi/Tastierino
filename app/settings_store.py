@@ -28,7 +28,7 @@ _DEFAULT_FN = [
 ]
 
 DEFAULTS = {
-    "v": 2,
+    "v": 3,
     "keys_l0": [dict(k) for k in _DEFAULT_L0],
     "keys_fn": [[dict(k) for k in _DEFAULT_FN] for _ in range(4)],
     "lt_mask": 0,
@@ -36,6 +36,8 @@ DEFAULTS = {
     "colors": [[0, 80, 255], [0, 255, 80], [255, 20, 0]],
     "brightness": [160, 160, 160],
     "pulse": [True, True, True],
+    "auto_off_enabled": False,
+    "auto_off_steps": 9,  # index → 60s
 }
 
 
@@ -128,13 +130,25 @@ def _clean_pulse(flags) -> list:
     return [bool(flag) for flag in flags]
 
 
+def _clean_auto_off_steps(value, legacy_v=None) -> int:
+    from . import protocol
+    steps = int(value)
+    # Settings v<3 used steps*10 seconds (0..30). Now steps = table index.
+    if legacy_v is not None and legacy_v < 3:
+        steps = protocol.auto_off_index_from_seconds(steps * 10)
+    if not 0 <= steps <= protocol.AUTO_OFF_MAX_INDEX:
+        raise ValueError("Invalid auto-off timeout")
+    return steps
+
+
 def normalize(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("Settings must be an object")
+    legacy_v = int(data.get("v", 2))
     lt_mask = int(data.get("lt_mask", 0)) & 0x0F
     keys_fn = _clean_keys_fn(data.get("keys_fn"), data.get("keys_l1"))
     return {
-        "v": 2,
+        "v": 3,
         "keys_l0": _clean_keys(data.get("keys_l0") or data.get("keys") or DEFAULTS["keys_l0"]),
         "keys_fn": keys_fn,
         "keys_l1": [dict(k) for k in keys_fn[0]],
@@ -143,6 +157,11 @@ def normalize(data: dict) -> dict:
         "colors": _clean_colors(data.get("colors") or DEFAULTS["colors"]),
         "brightness": _clean_brightness(data.get("brightness") or DEFAULTS["brightness"]),
         "pulse": _clean_pulse(data.get("pulse") if "pulse" in data else DEFAULTS["pulse"]),
+        "auto_off_enabled": bool(data["auto_off_enabled"]) if "auto_off_enabled" in data else DEFAULTS["auto_off_enabled"],
+        "auto_off_steps": _clean_auto_off_steps(
+            data["auto_off_steps"] if "auto_off_steps" in data else DEFAULTS["auto_off_steps"],
+            legacy_v=legacy_v if "auto_off_steps" in data else None,
+        ),
     }
 
 

@@ -14,7 +14,7 @@ class FakeDevice:
         [protocol.GET_KEYMAP | protocol.RESPONSE, 0, 1] + [0, 0, 0x6B] * 6
     ).ljust(32, b"\0")
     lighting_response = bytes(
-        [protocol.GET_LIGHTING | protocol.RESPONSE, 0, 20, 120, 240, 0, 80, 255, 0, 255, 80, 255, 20, 0, 0x05]
+        [protocol.GET_LIGHTING | protocol.RESPONSE, 0, 20, 120, 240, 0, 80, 255, 0, 255, 80, 255, 20, 0, 0x05, 1, 12]
     ).ljust(32, b"\0")
 
     def open_path(self, path):
@@ -68,6 +68,8 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(config["keys_l1"][0]["code"], 0x6B)
         self.assertEqual(config["colors"][2], [255, 20, 0])
         self.assertEqual(config["pulse"], [True, False, True])
+        self.assertEqual(config["auto_off_enabled"], True)
+        self.assertEqual(config["auto_off_steps"], 12)
         self.assertEqual(len(FakeDevice.last_write), 33)
 
     @patch("app.device.hid", FakeHid)
@@ -79,6 +81,22 @@ class DeviceTests(unittest.TestCase):
     def test_sets_pulse_mask(self):
         MacroPad().set_pulse([True, False, True])
         self.assertEqual(FakeDevice.last_write[1:3], bytes([protocol.SET_PULSE, 0x05]))
+
+    @patch("app.device.hid", FakeHid)
+    def test_sets_auto_off(self):
+        MacroPad().set_auto_off(True, 9)
+        self.assertEqual(
+            FakeDevice.last_write[1:4],
+            bytes([protocol.SET_AUTO_OFF, 1, 9]),
+        )
+
+    def test_auto_off_seconds_table(self):
+        self.assertEqual(protocol.AUTO_OFF_SECONDS[:5], (0, 1, 3, 5, 10))
+        self.assertEqual(protocol.AUTO_OFF_SECONDS[-1], 300)
+        self.assertEqual(protocol.auto_off_index_from_seconds(60), 9)
+        self.assertEqual(protocol.auto_off_index_from_seconds(1), 1)
+        self.assertEqual(protocol.auto_off_index_from_seconds(3), 2)
+        self.assertEqual(protocol.auto_off_index_from_seconds(5), 3)
 
     @patch("app.device.hid", FakeHid)
     def test_set_keymap_includes_layer(self):
@@ -93,6 +111,28 @@ class DeviceTests(unittest.TestCase):
     def test_set_lt_mask(self):
         MacroPad().set_lt_mask(0x05)
         self.assertEqual(FakeDevice.last_write[1:3], bytes([protocol.SET_LT_MASK, 0x05]))
+
+    def test_wave_led_color_blue_to_white(self):
+        trough = MacroPad._wave_led_color(0, 0)
+        self.assertEqual(trough, [0, 50, 255])
+        crest = MacroPad._wave_led_color(64, 0)  # t=64 → mix=128
+        self.assertEqual(crest[2], 255)
+        self.assertGreater(crest[0], trough[0])
+        # offset LEDs differ at same global phase
+        self.assertNotEqual(
+            MacroPad._wave_led_color(0, 0),
+            MacroPad._wave_led_color(0, 1),
+        )
+
+    @patch("app.device.hid", FakeHid)
+    def test_play_wave_pulse_restores_lighting(self):
+        pad = MacroPad()
+        with patch.object(pad, "set_rgb") as set_rgb, patch.object(pad, "set_brightness") as set_bri:
+            pad.play_wave_pulse(duration=0.08, frame_ms=20)
+        self.assertTrue(set_bri.called)
+        self.assertTrue(set_rgb.called)
+        self.assertEqual(set_bri.call_args_list[-1].args[0], [20, 120, 240])
+        self.assertEqual(set_rgb.call_args_list[-1].args[0], [[0, 80, 255], [0, 255, 80], [255, 20, 0]])
 
 
 if __name__ == "__main__":
