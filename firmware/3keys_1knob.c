@@ -1,8 +1,10 @@
 // CH552 RGB MacroPad firmware: keyboard, encoder and bidirectional Raw HID.
-// Layers L0/L1 + per-key LT (tap-on-release, hold-on-timer).
+// Architecture: key_sm (LT state machine) + light_ctrl (LED requests) + main wiring.
 
 #include <config.h>
 #include <delay.h>
+#include <key_sm.h>
+#include <light_ctrl.h>
 #include <neo.h>
 #include <protocol.h>
 #include <system.h>
@@ -12,9 +14,6 @@
 void USB_interrupt(void);
 void USB_ISR(void) __interrupt(INT_NO_USB) { USB_interrupt(); }
 
-#define KEYBOARD 0
-#define CONSUMER 1
-#define MOUSE 2
 #define EEPROM_MAGIC_0 0x4d
 #define EEPROM_MAGIC_1 0x50
 #define EEPROM_VERSION 8
@@ -26,53 +25,8 @@ void USB_ISR(void) __interrupt(INT_NO_USB) { USB_interrupt(); }
 #define EEPROM_V6_SIZE 126
 #define EEPROM_V7_SIZE 128
 #define EEPROM_SIZE 128
-#define HOLD_TICKS 40   // ~200 ms @ 5 ms/loop — enter Fn, never emit tap
-#define MIN_TAP_TICKS 4 // ~20 ms — ignore bounce "releases" as taps
-#define DEBOUNCE_TICKS 2
-#define SEQ_GAP_MS 40   // delay between sequential L0 taps
-#define AUTO_OFF_TICKS_PER_SEC 200U // 1s @ 5ms/loop
-#define LED_FADE_STEP 9               // ~150ms full fade @ 5ms/tick
 
-struct binding {
-  uint8_t mod;
-  uint8_t type;
-  uint8_t code;
-};
-
-struct RGBColor {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-};
-
-__xdata struct binding layers[LAYER_COUNT][KEY_COUNT];
-__xdata struct binding l0_step1[KEY_COUNT]; // Tap layer: optional 2nd action (sequential)
-struct RGBColor colors[LED_COUNT];
-uint8_t brightness[LED_COUNT];
-uint8_t pulse_t[LED_COUNT];
-uint8_t pulse_en;
-uint8_t auto_off_en;     // 1 = idle auto-off active
-uint8_t auto_off_index;  // index into auto_off_sec_table
-uint8_t led_fade;        // current brightness gate 0..255
-uint8_t led_fade_tgt;    // 0 = off, 255 = on (always via fade)
-uint16_t idle_ticks;
-uint8_t lt_mask;   // bits 0..3 = LT on Button1..3 + Enc click
-uint8_t fn_mask;   // bits 0..3 = keys currently held as Fn (bits 0..2 → LED white)
-uint8_t key_last[KEY_COUNT];
-uint8_t key_raw[KEY_COUNT];
-uint8_t key_db[KEY_COUNT];
-uint8_t hold_cnt[LT_KEY_COUNT];
-uint8_t lt_became_fn[LT_KEY_COUNT]; // this press already entered Fn — never tap
-uint8_t armed_layer[KEY_COUNT];
-uint8_t armed_seq[KEY_COUNT]; // 1 = fired L0 sequence on press (skip release)
 __xdata uint8_t rawPacket[RAW_PACKET_SIZE];
-
-// Non-linear press pulse: dip intensity, never black. ~80ms @ 5ms/tick.
-#define PULSE_LEN 16
-static const uint8_t pulse_curve[PULSE_LEN] = {
-  200, 140, 100, 90, 100, 125, 155, 180,
-  200, 218, 232, 242, 248, 252, 254, 255
-};
 
 // Power-on white/blue wave pulse (before USB). Host replays after flash.
 #define BOOT_WAVE_FRAMES 240
@@ -93,12 +47,10 @@ void boot_wave_pulse(void) {
     EA = 0;
     for (i = 0; i < LED_COUNT; i++) {
       t = phase + i * BOOT_WAVE_PHASE;
-      // triangle 0→255→0 — crest travels key→key
       if (t < 128)
         mix = t << 1;
       else
         mix = (uint8_t)((255 - t) << 1);
-      // mix 0 = blue (0,50,255), 255 = white
       r = mix;
       g = 50 + (uint8_t)(((uint16_t)205 * mix) >> 8);
       NEO_writeColor(r, g, 255);
@@ -134,141 +86,6 @@ void eeprom_write_byte(__data uint8_t addr, __xdata uint8_t val) {
   SAFE_MOD = 0;
 }
 
-// Auto-off timeout table (seconds): 0,1,3,5 then 10..300 step 10
-static const uint16_t __code auto_off_sec_table[AUTO_OFF_TABLE_LEN] = {
-  0, 1, 3, 5,
-  10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120,
-  130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240,
-  250, 260, 270, 280, 290, 300
-};
-
-uint8_t auto_off_index_from_sec(uint16_t sec) {
-  uint8_t i;
-  for (i = 0; i < AUTO_OFF_TABLE_LEN; i++) {
-    if (auto_off_sec_table[i] >= sec)
-      return i;
-  }
-  return AUTO_OFF_MAX_INDEX;
-}
-
-uint8_t leds_any_brightness(void) {
-  return brightness[0] | brightness[1] | brightness[2];
-}
-
-uint8_t scale_color(uint8_t value, uint8_t led) {
-  uint8_t bri = brightness[led];
-  if (pulse_t[led])
-    bri = ((uint16_t)bri * pulse_curve[PULSE_LEN - pulse_t[led]]) >> 8;
-  return ((uint16_t)value * ((uint16_t)bri + 1)) >> 8;
-}
-
-uint8_t apply_led_fade(uint8_t value) {
-  if (led_fade == 0)
-    return 0;
-  if (led_fade == 255)
-    return value;
-  return ((uint16_t)value * ((uint16_t)led_fade + 1)) >> 8;
-}
-
-void leds_fade_tick(void) {
-  if (led_fade < led_fade_tgt) {
-    if ((uint8_t)(led_fade_tgt - led_fade) <= LED_FADE_STEP)
-      led_fade = led_fade_tgt;
-    else
-      led_fade += LED_FADE_STEP;
-  } else if (led_fade > led_fade_tgt) {
-    if ((uint8_t)(led_fade - led_fade_tgt) <= LED_FADE_STEP)
-      led_fade = led_fade_tgt;
-    else
-      led_fade -= LED_FADE_STEP;
-  }
-}
-
-void NEO_update(void) {
-  uint8_t i;
-  EA = 0;
-  for (i = 0; i < LED_COUNT; i++) {
-    if (led_fade == 0)
-      NEO_writeColor(0, 0, 0);
-    else if (fn_mask & (1 << i))
-      NEO_writeColor(apply_led_fade(255), apply_led_fade(255), apply_led_fade(255));
-    else
-      NEO_writeColor(apply_led_fade(scale_color(colors[i].r, i)),
-                     apply_led_fade(scale_color(colors[i].g, i)),
-                     apply_led_fade(scale_color(colors[i].b, i)));
-  }
-  EA = 1;
-  for (i = 0; i < LED_COUNT; i++)
-    if (pulse_t[i])
-      pulse_t[i]--;
-  leds_fade_tick();
-}
-
-// Request lights on (fade in) — no-op if brightness is all zero
-void leds_wake(void) {
-  idle_ticks = 0;
-  if (leds_any_brightness())
-    led_fade_tgt = 255;
-  else
-    led_fade_tgt = 0;
-}
-
-// Brightness/RGB changed: fade toward on or off
-void leds_on_output_change(void) {
-  idle_ticks = 0;
-  if (leds_any_brightness())
-    led_fade_tgt = 255;
-  else
-    led_fade_tgt = 0;
-}
-
-void leds_idle_tick(void) {
-  uint16_t limit;
-  uint16_t sec;
-
-  // No brightness → always fade off (Turn all off, bri=0, …)
-  if (!leds_any_brightness()) {
-    led_fade_tgt = 0;
-    return;
-  }
-
-  if (!auto_off_en) {
-    led_fade_tgt = 255;
-    return;
-  }
-
-  // Held key / Fn → fade on and reset idle
-  if (key_last[0] || key_last[1] || key_last[2] || key_last[3] || fn_mask) {
-    idle_ticks = 0;
-    led_fade_tgt = 255;
-    return;
-  }
-
-  if (led_fade_tgt == 0)
-    return;
-
-  sec = auto_off_sec_table[auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
-                                                               : auto_off_index];
-  if (sec == 0) {
-    led_fade_tgt = 0;
-    return;
-  }
-  limit = sec * AUTO_OFF_TICKS_PER_SEC;
-  if (idle_ticks < 65535)
-    idle_ticks++;
-  if (idle_ticks >= limit)
-    led_fade_tgt = 0;
-}
-
-void copy_layer(uint8_t dst, uint8_t src) {
-  uint8_t i;
-  for (i = 0; i < KEY_COUNT; i++) {
-    layers[dst][i].mod = layers[src][i].mod;
-    layers[dst][i].type = layers[src][i].type;
-    layers[dst][i].code = layers[src][i].code;
-  }
-}
-
 void defaults_load(void) {
   uint8_t i;
   uint8_t layer;
@@ -289,7 +106,6 @@ void defaults_load(void) {
   layers[0][5].type = CONSUMER;
   layers[0][5].code = 0xea; // volume down
 
-  // Default Fn layers (copied to all Fn maps)
   layers[1][0].code = 0x6b; // F16
   layers[1][1].code = 0x6c; // F17
   layers[1][2].code = 0x6d; // F18
@@ -314,7 +130,7 @@ void defaults_load(void) {
   for (i = 0; i < LED_COUNT; i++)
     brightness[i] = 160;
   pulse_en = 0x07;
-  lt_mask = 0x00; // opt-in via UI Add
+  lt_mask = 0x00;
   auto_off_en = 0;
   auto_off_index = 9; // 60s
 }
@@ -325,11 +141,6 @@ uint8_t config_checksum(uint8_t version, uint8_t size) {
   for (i = 4; i < size; i++)
     value ^= eeprom_read_byte(i);
   return value;
-}
-
-void sanitize_binding(__xdata struct binding *b) {
-  if (b->type > MOUSE)
-    b->type = KEYBOARD;
 }
 
 void config_load(void) {
@@ -457,7 +268,6 @@ void config_load(void) {
     if (auto_off_index > AUTO_OFF_MAX_INDEX)
       auto_off_index = AUTO_OFF_MAX_INDEX;
   } else if (version >= 7) {
-    // v7: byte 127 = steps * 10 seconds
     auto_off_en = eeprom_read_byte(126) & 1;
     auto_off_index = auto_off_index_from_sec((uint16_t)eeprom_read_byte(127) * 10);
   } else {
@@ -504,124 +314,6 @@ void config_save(void) {
   for (i = 4; i < EEPROM_SIZE; i++)
     checksum ^= eeprom_read_byte(i);
   eeprom_write_byte(3, checksum);
-}
-
-uint8_t active_layer(void) {
-  uint8_t i;
-  for (i = 0; i < LT_KEY_COUNT; i++) {
-    if (fn_mask & (1 << i))
-      return (uint8_t)(1 + i); // Fn key i → layer 1+i
-  }
-  return 0;
-}
-
-void binding_press(__xdata struct binding *b) {
-  if (b->type == KEYBOARD)
-    KBD_code_press(b->mod, b->code);
-  else if (b->type == CONSUMER)
-    CON_press(b->code);
-  else
-    MOUSE_press(b->code);
-}
-
-void binding_release(__xdata struct binding *b) {
-  if (b->type == KEYBOARD)
-    KBD_code_release(b->mod, b->code);
-  else if (b->type == CONSUMER)
-    CON_release(b->code);
-  else
-    MOUSE_release(b->code);
-}
-
-void binding_tap(__xdata struct binding *b) {
-  if (b->type == KEYBOARD)
-    KBD_code_type(b->mod, b->code);
-  else if (b->type == CONSUMER)
-    CON_type(b->code);
-  else
-    MOUSE_type(b->code);
-}
-
-uint8_t binding_active(__xdata struct binding *b) {
-  return b->code || b->mod || b->type;
-}
-
-// Play L0 tap sequence: step0 then optional step1.
-void binding_play_l0(uint8_t idx) {
-  binding_tap(&layers[0][idx]);
-  if (binding_active(&l0_step1[idx])) {
-    DLY_ms(SEQ_GAP_MS);
-    WDT_reset();
-    binding_tap(&l0_step1[idx]);
-  }
-}
-
-// Tap-on-release + hold-on-timer. Long-press must NEVER emit tap.
-void process_key(uint8_t idx, uint8_t current, uint8_t led) {
-  uint8_t was = key_last[idx];
-  uint8_t lt = (idx < LT_KEY_COUNT) && (lt_mask & (1 << idx));
-
-  if (current && !was) {
-    leds_wake();
-    if (led < LED_COUNT && (pulse_en & (1 << led)) && !(fn_mask & (1 << led)))
-      pulse_t[led] = PULSE_LEN;
-    if (lt) {
-      hold_cnt[idx] = 0;
-      lt_became_fn[idx] = 0;
-      armed_seq[idx] = 0;
-    } else {
-      armed_layer[idx] = active_layer();
-      // Multi-step Tap: fire full sequence on press (no hold semantics).
-      if (armed_layer[idx] == 0 && binding_active(&l0_step1[idx])) {
-        binding_play_l0(idx);
-        armed_seq[idx] = 1;
-      } else {
-        binding_press(&layers[armed_layer[idx]][idx]);
-        armed_seq[idx] = 0;
-      }
-    }
-  } else if (current && was) {
-    if (lt && !lt_became_fn[idx]) {
-      if (hold_cnt[idx] < 255)
-        hold_cnt[idx]++;
-      if (hold_cnt[idx] >= HOLD_TICKS) {
-        lt_became_fn[idx] = 1;
-        fn_mask |= (1 << idx);
-      }
-    }
-  } else if (!current && was) {
-    if (lt) {
-      if (lt_became_fn[idx]) {
-        // Long-press Fn: release only, no tap
-        fn_mask &= ~(1 << idx);
-      } else if (hold_cnt[idx] >= MIN_TAP_TICKS) {
-        // Short intentional press — play L0 sequence
-        binding_play_l0(idx);
-      }
-      // else: bounce / noise — ignore
-      hold_cnt[idx] = 0;
-      lt_became_fn[idx] = 0;
-    } else if (!armed_seq[idx]) {
-      binding_release(&layers[armed_layer[idx]][idx]);
-    }
-    armed_seq[idx] = 0;
-  }
-  key_last[idx] = current;
-}
-
-// Stabilize pin before LT state machine (kills press→bounce-release→tap→hold).
-void process_key_debounced(uint8_t idx, uint8_t raw, uint8_t led) {
-  if (raw != key_raw[idx]) {
-    key_raw[idx] = raw;
-    key_db[idx] = 0;
-    return;
-  }
-  if (key_db[idx] < DEBOUNCE_TICKS) {
-    key_db[idx]++;
-    if (key_db[idx] < DEBOUNCE_TICKS)
-      return;
-  }
-  process_key(idx, raw, led);
 }
 
 void raw_response(uint8_t command, uint8_t status) {
@@ -678,12 +370,10 @@ void raw_handle(void) {
     if (count < 10) {
       raw_response(command, STATUS_BAD_LENGTH);
     } else {
-      for (i = 0; i < LED_COUNT; i++) {
-        colors[i].r = rawPacket[1 + i * 3];
-        colors[i].g = rawPacket[2 + i * 3];
-        colors[i].b = rawPacket[3 + i * 3];
-      }
-      leds_on_output_change();
+      for (i = 0; i < LED_COUNT; i++)
+        light_set_rgb_led(i, rawPacket[1 + i * 3], rawPacket[2 + i * 3],
+                          rawPacket[3 + i * 3]);
+      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_BRIGHTNESS) {
@@ -692,16 +382,43 @@ void raw_handle(void) {
     else {
       if (count >= 4) {
         for (i = 0; i < LED_COUNT; i++)
-          brightness[i] = rawPacket[1 + i];
+          light_set_brightness_led(i, rawPacket[1 + i]);
       } else {
-        for (i = 0; i < LED_COUNT; i++)
-          brightness[i] = rawPacket[1];
+        light_set_brightness_all(rawPacket[1]);
       }
-      leds_on_output_change();
+      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
+      raw_response(command, STATUS_OK);
+    }
+  } else if (command == CMD_SET_RGB_LED) {
+    if (count < 5) {
+      raw_response(command, STATUS_BAD_LENGTH);
+    } else if (rawPacket[1] >= LED_COUNT) {
+      raw_response(command, STATUS_BAD_COMMAND);
+    } else {
+      light_set_rgb_led(rawPacket[1], rawPacket[2], rawPacket[3],
+                        rawPacket[4]);
+      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
+      raw_response(command, STATUS_OK);
+    }
+  } else if (command == CMD_SET_BRIGHTNESS_LED) {
+    if (count < 3) {
+      raw_response(command, STATUS_BAD_LENGTH);
+    } else if (rawPacket[1] >= LED_COUNT) {
+      raw_response(command, STATUS_BAD_COMMAND);
+    } else {
+      light_set_brightness_led(rawPacket[1], rawPacket[2]);
+      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
+      raw_response(command, STATUS_OK);
+    }
+  } else if (command == CMD_SET_CPULSE) {
+    if (count < 2) {
+      raw_response(command, STATUS_BAD_LENGTH);
+    } else {
+      light_rqt_u8(LIGHT_RQT_SET_CPULSE, LIGHT_SRC_EXTERNAL,
+                   (uint8_t)(rawPacket[1] & 0x07));
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_KEYMAP) {
-    // v3: [layer][18 keys]  |  v4+: [layer][step][18 keys] (step only for L0)
     step = 0;
     data_off = 2;
     if (count >= 21) {
@@ -719,7 +436,6 @@ void raw_handle(void) {
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_GET_KEYMAP) {
-    // request: [layer] or [layer, step]
     step = (count >= 3) ? rawPacket[2] : 0;
     if (count < 2) {
       raw_response(command, STATUS_BAD_LENGTH);
@@ -766,22 +482,20 @@ void raw_handle(void) {
     rawPacket[15] = auto_off_en & 1;
     rawPacket[16] = auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
                                                         : auto_off_index;
+    rawPacket[17] = cpulse_en & 0x07;
   } else if (command == CMD_SET_PULSE) {
     if (count < 2)
       raw_response(command, STATUS_BAD_LENGTH);
     else {
-      pulse_en = rawPacket[1] & 0x07;
+      light_rqt_u8(LIGHT_RQT_SET_PULSE, LIGHT_SRC_EXTERNAL, rawPacket[1]);
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_AUTO_OFF) {
     if (count < 3)
       raw_response(command, STATUS_BAD_LENGTH);
     else {
-      auto_off_en = rawPacket[1] & 1;
-      auto_off_index = rawPacket[2];
-      if (auto_off_index > AUTO_OFF_MAX_INDEX)
-        auto_off_index = AUTO_OFF_MAX_INDEX;
-      leds_wake();
+      light_rqt_u8_u8(LIGHT_RQT_SET_AUTO_OFF, LIGHT_SRC_EXTERNAL, rawPacket[1],
+                      rawPacket[2]);
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_PING || command == CMD_ENTER_BOOTLOADER) {
@@ -813,38 +527,24 @@ void main(void) {
   CLK_config();
   DLY_ms(5);
   WDT_start();
-  // LEDs first — visible ASAP after flash reboot, before USB enum delay
   boot_wave_pulse();
   KBD_init();
   defaults_load();
   config_load();
-  fn_mask = 0;
-  for (i = 0; i < KEY_COUNT; i++) {
-    key_last[i] = 0;
-    key_raw[i] = 0;
-    key_db[i] = 0;
-    armed_layer[i] = 0;
-    armed_seq[i] = 0;
-  }
-  for (i = 0; i < LT_KEY_COUNT; i++) {
-    hold_cnt[i] = 0;
-    lt_became_fn[i] = 0;
-  }
-  for (i = 0; i < LED_COUNT; i++)
-    pulse_t[i] = 0;
-  // Fade in after boot wave
-  led_fade = 0;
-  leds_wake();
+  key_sm_init();
+  light_init();
+  light_rqt(LIGHT_RQT_WAKE, LIGHT_SRC_INTERNAL);
 
   while (1) {
-    process_key_debounced(0, !PIN_read(PIN_KEY1), 0);
-    process_key_debounced(1, !PIN_read(PIN_KEY2), 1);
-    process_key_debounced(2, !PIN_read(PIN_KEY3), 2);
-    process_key_debounced(3, !PIN_read(PIN_ENC_SW), 0xff);
+    key_sm_debounced(0, !PIN_read(PIN_KEY1), 0);
+    key_sm_debounced(1, !PIN_read(PIN_KEY2), 1);
+    key_sm_debounced(2, !PIN_read(PIN_KEY3), 2);
+    key_sm_debounced(3, !PIN_read(PIN_ENC_SW), 0xff);
 
+    // Encoder: edge-driven, outside key_sm (permanent for v1)
     if (!PIN_read(PIN_ENC_A)) {
-      leds_wake();
-      layer = active_layer();
+      light_rqt(LIGHT_RQT_WAKE, LIGHT_SRC_USER);
+      layer = key_sm_active_layer();
       i = PIN_read(PIN_ENC_B) ? 4 : 5;
       DLY_ms(10);
       while (!PIN_read(PIN_ENC_A))
@@ -856,9 +556,8 @@ void main(void) {
     }
 
     raw_handle();
-    leds_idle_tick();
-    NEO_update();
-    DLY_ms(5);
+    light_tick();
+    DLY_ms(LIGHT_LOOP_MS);
     WDT_reset();
   }
 }

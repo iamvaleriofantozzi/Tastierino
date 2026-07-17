@@ -15,6 +15,9 @@ SET_PULSE = 0x09
 GET_KEYMAP = 0x0A
 SET_LT_MASK = 0x0B
 SET_AUTO_OFF = 0x0C
+SET_RGB_LED = 0x0D
+SET_BRIGHTNESS_LED = 0x0E
+SET_CPULSE = 0x0F
 RESPONSE = 0x80
 
 CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")

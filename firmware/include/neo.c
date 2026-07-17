@@ -21,7 +21,7 @@
 
 // Gamma correction is neede to display correct colors.
 // https://learn.adafruit.com/led-tricks-gamma-correction/the-quick-fix
-__code uint8_t gamma8[] = {
+static const uint8_t __code gamma8[] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
     1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
@@ -120,15 +120,22 @@ void NEO_sendByte(uint8_t data) {
 // ===================================================================================
 // Write Color to a Single Pixel
 // ===================================================================================
-void NEO_writeColor(uint8_t r, uint8_t g, uint8_t b) {
-  
+uint8_t NEO_gamma8(uint8_t value) {
+  return gamma8[value];
+}
+
+void NEO_writeRawColor(uint8_t r, uint8_t g, uint8_t b) {
   #if defined (NEO_GRB)
-    NEO_sendByte(gamma8[g]); NEO_sendByte(gamma8[r]); NEO_sendByte(gamma8[b]);
+    NEO_sendByte(g); NEO_sendByte(r); NEO_sendByte(b);
   #elif defined (NEO_RGB)
-    NEO_sendByte(gamma8[r]); NEO_sendByte(gamma8[g]); NEO_sendByte(gamma8[b]);
+    NEO_sendByte(r); NEO_sendByte(g); NEO_sendByte(b);
   #else
     #error Wrong or missing NeoPixel type definition!
   #endif
+}
+
+void NEO_writeColor(uint8_t r, uint8_t g, uint8_t b) {
+  NEO_writeRawColor(gamma8[r], gamma8[g], gamma8[b]);
 }
 
 // ===================================================================================

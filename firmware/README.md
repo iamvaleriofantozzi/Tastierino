@@ -1,5 +1,37 @@
 # 3keys_1knob
+
 Custom firmware for a 3-key + rotary encoder macropad (https://hackaday.io/project/189914)
+
+## Architecture (FILO-lite dual)
+
+```
+scan+debounce ──► PRESS/RELEASE/TICK ──► key_sm (×4)
+                                            │
+encoder rot (edge, fuori SM) ───────────────┤
+                                            ▼
+                              binding layer (KBD/CON/MOUSE)
+                                            │
+raw HID EXTERNAL ──► light_ctrl ◄── USER / INTERNAL
+                          │ HAL = neo.h
+                          ▼
+                       NeoPixel
+```
+
+### `key_sm` — per-key LT state machine
+
+| State | PRESS | RELEASE | TICK |
+|---|---|---|---|
+| **IDLE** | → PRESSED (wake/pulse; LT reset hold, else arm+press/seq) | — | — |
+| **PRESSED** | — | LT: tap L0 if hold≥MIN else ignore; non-LT: release | LT: hold++; ≥HOLD → FN_HELD |
+| **FN_HELD** | — | clear fn_mask → IDLE | — |
+
+Timing (@ 5 ms/loop): `HOLD_TICKS=40` (~200 ms), `MIN_TAP_TICKS=4` (~20 ms), `DEBOUNCE_TICKS=2`.
+
+### `light_ctrl` — LED requests
+
+Sources: `USER` / `EXTERNAL` / `INTERNAL`. Requests via `light_rqt*` (switch dispatch). Owns fade, pulse, auto-off; `light_tick()` each loop.
+
+Encoder stays edge-driven outside `key_sm` (v1).
 
 ## Installation
 

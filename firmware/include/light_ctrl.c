@@ -1,0 +1,519 @@
+// light_ctrl — fade / pulse / idle auto-off / NeoPixel HAL bridge.
+// Per-LED fade: color change dips to 1/3 current luma, then back to start.
+// Max duration: LIGHT_FADE_MAX_MS (see light_ctrl.h).
+#include <light_ctrl.h>
+#include <key_sm.h>
+#include <neo.h>
+#include <ch554.h>
+
+#define PRESS_PULSE_LEN 16
+#define BREATH_TICK_DIV 2 /* 256 phases × 10 ms = 2.56 s/cycle */
+#define U8_FULL_SCALE 255
+#define BREATH_MIN_DIVISOR 5
+#define BREATH_MIN_SCALE (U8_FULL_SCALE / BREATH_MIN_DIVISOR)
+#define BREATH_DROP_SCALE (U8_FULL_SCALE - BREATH_MIN_SCALE)
+#define BREATH_PHASE_HALF 128
+#define BREATH_EASE_SHIFT 7
+#define BREATH_EASE_SCALE (1 << BREATH_EASE_SHIFT)
+#define BREATH_EASE_MAX (BREATH_EASE_SCALE - 1)
+#define BREATH_EASE_ROUND (BREATH_EASE_SCALE >> 1)
+#define BREATH_DROP_COEFFICIENT \
+  (((BREATH_DROP_SCALE * BREATH_EASE_SCALE) + BREATH_EASE_MAX - 1) / \
+   BREATH_EASE_MAX)
+
+struct RGBColor colors[LED_COUNT];
+uint8_t brightness[LED_COUNT];
+static __xdata uint8_t pulse_t[LED_COUNT];
+uint8_t pulse_en;
+uint8_t cpulse_en;
+static __xdata uint8_t cpulse_pre_bri[LED_COUNT];
+static __xdata uint8_t cpulse_phase[LED_COUNT];
+static uint8_t cpulse_tick_div;
+uint8_t auto_off_en;
+uint8_t auto_off_index;
+static uint16_t idle_ticks;
+static uint8_t out_pending_mask; // bit i = LED i waiting fade-out commit
+static uint8_t out_dirty;        // OUTPUT_CHANGE requested
+static uint8_t out_settle;       // ticks to wait (coalesce RGB+bri HID pair)
+
+// Per-LED fade gate + timed segment
+static __xdata uint8_t led_fade[LED_COUNT];
+static __xdata uint8_t led_fade_tgt[LED_COUNT];
+static __xdata uint8_t out_dip_tgt[LED_COUNT];
+static __xdata uint8_t out_return_tgt[LED_COUNT]; // luma after dip (usually start level)
+static __xdata uint8_t fade_active[LED_COUNT];
+static __xdata uint8_t fade_from[LED_COUNT];
+static __xdata uint8_t fade_to[LED_COUNT];
+static __xdata uint8_t fade_tick[LED_COUNT];
+static __xdata uint8_t fade_len[LED_COUNT];
+
+// What NeoPixel actually renders (lag behind config during fade transition)
+static __xdata struct RGBColor show_c[LED_COUNT];
+static __xdata uint8_t show_b[LED_COUNT];
+
+static const uint8_t __code press_pulse_curve[PRESS_PULSE_LEN] = {
+  200, 140, 100, 90, 100, 125, 155, 180,
+  200, 218, 232, 242, 248, 252, 254, 255
+};
+
+static const uint16_t __code auto_off_sec_table[AUTO_OFF_TABLE_LEN] = {
+  0, 1, 3, 5,
+  10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120,
+  130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240,
+  250, 260, 270, 280, 290, 300
+};
+
+uint8_t auto_off_index_from_sec(uint16_t sec) {
+  uint8_t i;
+  for (i = 0; i < AUTO_OFF_TABLE_LEN; i++) {
+    if (auto_off_sec_table[i] >= sec)
+      return i;
+  }
+  return AUTO_OFF_MAX_INDEX;
+}
+
+static uint8_t leds_any_brightness(void) {
+  return brightness[0] | brightness[1] | brightness[2];
+}
+
+static void commit_show_led(uint8_t led) {
+  show_c[led].r = colors[led].r;
+  show_c[led].g = colors[led].g;
+  show_c[led].b = colors[led].b;
+  show_b[led] = brightness[led];
+}
+
+static void commit_show_all(void) {
+  uint8_t i;
+  for (i = 0; i < LED_COUNT; i++)
+    commit_show_led(i);
+}
+
+static uint8_t u8_diff(uint8_t a, uint8_t b) {
+  return (a > b) ? (uint8_t)(a - b) : (uint8_t)(b - a);
+}
+
+// Max |Δ| bri/RGB for one LED (0..255).
+static uint8_t output_distance_led(uint8_t led) {
+  uint8_t m;
+  uint8_t d;
+
+  m = u8_diff(show_b[led], brightness[led]);
+  d = u8_diff(show_c[led].r, colors[led].r);
+  if (d > m)
+    m = d;
+  d = u8_diff(show_c[led].g, colors[led].g);
+  if (d > m)
+    m = d;
+  d = u8_diff(show_c[led].b, colors[led].b);
+  if (d > m)
+    m = d;
+  return m;
+}
+
+static void finish_out_pending_led(uint8_t led);
+
+// |Δ|=255 → LIGHT_FADE_MAX_TICKS (= LIGHT_FADE_MAX_MS).
+static void set_fade_tgt_led(uint8_t led, uint8_t tgt) {
+  uint8_t dist;
+
+  // No-op only if already at tgt (or actively fading toward it)
+  if (tgt == led_fade_tgt[led] && (fade_active[led] || led_fade[led] == tgt))
+    return;
+  led_fade_tgt[led] = tgt;
+  if (led_fade[led] == tgt) {
+    fade_active[led] = 0;
+    return;
+  }
+  fade_from[led] = led_fade[led];
+  fade_to[led] = tgt;
+  dist = u8_diff(fade_from[led], fade_to[led]);
+  fade_len[led] = (uint8_t)(((uint16_t)dist * LIGHT_FADE_MAX_TICKS) / 255);
+  if (fade_len[led] == 0)
+    fade_len[led] = 1;
+  fade_tick[led] = 0;
+  fade_active[led] = 1;
+}
+
+static void set_fade_tgt_all(uint8_t tgt) {
+  uint8_t i;
+  for (i = 0; i < LED_COUNT; i++) {
+    if (out_pending_mask & (1 << i))
+      continue;
+    // Don't yank LEDs mid color-transition segment
+    if (fade_active[i])
+      continue;
+    set_fade_tgt_led(i, tgt);
+  }
+}
+
+static void finish_out_pending_led(uint8_t led) {
+  commit_show_led(led);
+  out_pending_mask &= (uint8_t)~(1 << led);
+  set_fade_tgt_led(led, out_return_tgt[led]);
+}
+
+static uint8_t scale_color(uint8_t value, uint8_t led) {
+  uint8_t bri = show_b[led];
+  return ((uint16_t)value * ((uint16_t)bri + 1)) >> 8;
+}
+
+static uint8_t apply_led_fade(uint8_t value, uint8_t led) {
+  uint8_t f = led_fade[led];
+  if (f == 0)
+    return 0;
+  if (f == 255)
+    return value;
+  return ((uint16_t)value * ((uint16_t)f + 1)) >> 8;
+}
+
+// Algorithmic breathing: full brightness → 1/5 → full brightness.
+// x is triangular distance from peak; x*(full-x) creates smooth easing.
+static uint8_t breath_factor(uint8_t phase) {
+  uint8_t x;
+  uint8_t smooth;
+  uint8_t drop;
+  x = phase < BREATH_PHASE_HALF
+          ? phase
+          : (uint8_t)(U8_FULL_SCALE - phase);
+  smooth = (uint8_t)(((uint16_t)x *
+                      (uint16_t)(U8_FULL_SCALE - x)) >> BREATH_EASE_SHIFT);
+  drop = (uint8_t)((((uint16_t)BREATH_DROP_COEFFICIENT * smooth) +
+                    BREATH_EASE_ROUND) >> BREATH_EASE_SHIFT);
+  return (uint8_t)(U8_FULL_SCALE - drop);
+}
+
+// Apply pulse after gamma correction: equal PWM scaling on R/G/B preserves hue.
+static uint8_t apply_output_factor(uint8_t value, uint8_t factor) {
+  if (factor == U8_FULL_SCALE)
+    return value;
+  // Example at trough: current 200 × (51 + 1) / 256 = 40.
+  return ((uint16_t)value * ((uint16_t)factor + 1)) >> 8;
+}
+
+static void leds_fade_tick(void) {
+  uint8_t i;
+
+  for (i = 0; i < LED_COUNT; i++) {
+    if (fade_active[i]) {
+      fade_tick[i]++;
+      if (fade_tick[i] >= fade_len[i]) {
+        led_fade[i] = fade_to[i];
+        fade_active[i] = 0;
+      } else if (fade_to[i] >= fade_from[i]) {
+        led_fade[i] = (uint8_t)(fade_from[i] +
+                                 (((uint16_t)(fade_to[i] - fade_from[i]) * fade_tick[i]) /
+                                  fade_len[i]));
+      } else {
+        led_fade[i] = (uint8_t)(fade_from[i] -
+                                 (((uint16_t)(fade_from[i] - fade_to[i]) * fade_tick[i]) /
+                                  fade_len[i]));
+      }
+    }
+
+    if ((out_pending_mask & (1 << i)) && !fade_active[i] &&
+        led_fade[i] == out_dip_tgt[i])
+      finish_out_pending_led(i);
+  }
+}
+
+static void do_wake(void) {
+  idle_ticks = 0;
+  if (leds_any_brightness())
+    set_fade_tgt_all(255);
+  else
+    set_fade_tgt_all(0);
+}
+
+static void do_output_change(void) {
+  uint8_t i;
+  uint8_t dist;
+  uint8_t start;
+
+  idle_ticks = 0;
+  for (i = 0; i < LED_COUNT; i++) {
+    dist = output_distance_led(i);
+    if (dist == 0) {
+      if (!(out_pending_mask & (1 << i)))
+        commit_show_led(i);
+      continue;
+    }
+
+    // Fresh transition for this LED (coalesced RGB+bri already in globals)
+    out_pending_mask |= (uint8_t)(1 << i);
+
+    if (!brightness[i]) {
+      out_dip_tgt[i] = 0;
+      out_return_tgt[i] = 0;
+    } else if (led_fade[i] == 0) {
+      out_dip_tgt[i] = 0;
+      out_return_tgt[i] = 255;
+    } else {
+      start = led_fade[i];
+      out_return_tgt[i] = start;
+      out_dip_tgt[i] = (uint8_t)(start / 3);
+    }
+
+    set_fade_tgt_led(i, out_dip_tgt[i]);
+
+    if (led_fade[i] == out_dip_tgt[i])
+      finish_out_pending_led(i);
+  }
+}
+
+static void do_pulse_led(uint8_t led) {
+  if (led < LED_COUNT && (pulse_en & (1 << led)) &&
+      !(cpulse_en & (1 << led)) && !(fn_mask & (1 << led)))
+    pulse_t[led] = PRESS_PULSE_LEN;
+}
+
+static void do_set_pulse(uint8_t mask) {
+  pulse_en = mask & 0x07;
+}
+
+static void do_set_auto_off(uint8_t en, uint8_t index) {
+  uint8_t new_en = en & 1;
+  uint8_t new_idx = index;
+
+  if (new_idx > AUTO_OFF_MAX_INDEX)
+    new_idx = AUTO_OFF_MAX_INDEX;
+
+  // No-op updates must NOT wake/yank fades (host resends auto-off on every /api/rgb)
+  if (new_en == auto_off_en && new_idx == auto_off_index)
+    return;
+
+  auto_off_en = new_en;
+  auto_off_index = new_idx;
+  do_wake();
+}
+
+static void do_set_cpulse(uint8_t mask) {
+  uint8_t i;
+  uint8_t changed = 0;
+  mask &= 0x07;
+  for (i = 0; i < LED_COUNT; i++) {
+    uint8_t bit = (uint8_t)(1 << i);
+    if ((mask & bit) && !(cpulse_en & bit)) {
+      cpulse_pre_bri[i] = brightness[i];
+      cpulse_en |= bit;
+      pulse_t[i] = 0;
+      cpulse_phase[i] = 0;
+      changed = 1;
+    } else if (!(mask & bit) && (cpulse_en & bit)) {
+      cpulse_en &= ~bit;
+      pulse_t[i] = 0;
+      cpulse_phase[i] = 0;
+      brightness[i] = cpulse_pre_bri[i];
+      changed = 1;
+    }
+  }
+  if (changed) {
+    out_dirty = 1;
+    out_settle = 2;
+  }
+}
+
+static void leds_idle_tick(void) {
+  uint16_t limit;
+  uint16_t sec;
+  uint8_t i;
+
+  if (!leds_any_brightness()) {
+    set_fade_tgt_all(0);
+    return;
+  }
+
+  // Continuous breathing is an explicit active state; auto-off must not stop it.
+  if (cpulse_en) {
+    idle_ticks = 0;
+    set_fade_tgt_all(255);
+    return;
+  }
+
+  if (!auto_off_en) {
+    // Stay on: only lift LEDs that are fully off — never fight active fades
+    for (i = 0; i < LED_COUNT; i++) {
+      if (out_pending_mask & (1 << i))
+        continue;
+      if (fade_active[i])
+        continue;
+      if (brightness[i] && led_fade[i] == 0 && led_fade_tgt[i] == 0)
+        set_fade_tgt_led(i, 255);
+    }
+    return;
+  }
+
+  if (key_sm_any_activity()) {
+    idle_ticks = 0;
+    set_fade_tgt_all(255);
+    return;
+  }
+
+  for (i = 0; i < LED_COUNT; i++) {
+    if (!(out_pending_mask & (1 << i)) && !fade_active[i] && led_fade_tgt[i] != 0)
+      break;
+  }
+  if (i >= LED_COUNT)
+    return;
+
+  sec = auto_off_sec_table[auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
+                                                               : auto_off_index];
+  if (sec == 0) {
+    set_fade_tgt_all(0);
+    return;
+  }
+  limit = sec * LIGHT_TICKS_PER_SEC;
+  if (idle_ticks < 65535)
+    idle_ticks++;
+  if (idle_ticks >= limit)
+    set_fade_tgt_all(0);
+}
+
+static void neo_update(void) {
+  uint8_t i;
+  uint8_t factor;
+  uint8_t nr[LED_COUNT], ng[LED_COUNT], nb[LED_COUNT];
+
+  // Pre-compute all 9 channel values BEFORE EA=0 — keeps inter-LED gap <5µs.
+  // If computed inside EA=0, apply_led_fade slow-path (~200 cyc) during LED2 dip
+  // pushes LED1→LED2 gap to ~50µs, crossing WS2812 reset threshold → premature
+  // latch mid-frame → LEDs 0,1 flicker with LED1's shift-register data.
+  for (i = 0; i < LED_COUNT; i++) {
+    if (led_fade[i] == 0) {
+      nr[i] = 0; ng[i] = 0; nb[i] = 0;
+    } else if (fn_mask & (1 << i)) {
+      uint8_t v = apply_led_fade(255, i);
+      v = NEO_gamma8(v);
+      nr[i] = v; ng[i] = v; nb[i] = v;
+    } else {
+      if (cpulse_en & (1 << i))
+        factor = breath_factor(cpulse_phase[i]);
+      else if (pulse_t[i])
+        factor = press_pulse_curve[PRESS_PULSE_LEN - pulse_t[i]];
+      else
+        factor = U8_FULL_SCALE;
+      nr[i] = apply_output_factor(
+          NEO_gamma8(apply_led_fade(scale_color(show_c[i].r, i), i)), factor);
+      ng[i] = apply_output_factor(
+          NEO_gamma8(apply_led_fade(scale_color(show_c[i].g, i), i)), factor);
+      nb[i] = apply_output_factor(
+          NEO_gamma8(apply_led_fade(scale_color(show_c[i].b, i), i)), factor);
+    }
+  }
+
+  EA = 0;
+  for (i = 0; i < LED_COUNT; i++)
+    NEO_writeRawColor(nr[i], ng[i], nb[i]);
+  EA = 1;
+
+  for (i = 0; i < LED_COUNT; i++)
+    if (pulse_t[i])
+      pulse_t[i]--;
+
+  cpulse_tick_div++;
+  if (cpulse_tick_div >= BREATH_TICK_DIV) {
+    cpulse_tick_div = 0;
+    for (i = 0; i < LED_COUNT; i++)
+      if (cpulse_en & (1 << i))
+        cpulse_phase[i]++;
+  }
+  leds_fade_tick();
+}
+
+void light_init(void) {
+  uint8_t i;
+  for (i = 0; i < LED_COUNT; i++) {
+    pulse_t[i] = 0;
+    cpulse_pre_bri[i] = 0;
+    cpulse_phase[i] = 0;
+    led_fade[i] = 0;
+    led_fade_tgt[i] = 0;
+    out_dip_tgt[i] = 0;
+    out_return_tgt[i] = 0;
+    fade_active[i] = 0;
+  }
+  commit_show_all();
+  out_pending_mask = 0;
+  out_dirty = 0;
+  out_settle = 0;
+  idle_ticks = 0;
+  cpulse_en = 0;
+  cpulse_tick_div = 0;
+}
+
+void light_rqt(uint8_t rqt, uint8_t src) {
+  (void)src;
+  switch (rqt) {
+  case LIGHT_RQT_WAKE:
+    do_wake();
+    break;
+  case LIGHT_RQT_OUTPUT_CHANGE:
+    // Coalesce back-to-back SET_RGB + SET_BRIGHTNESS into one fade
+    out_dirty = 1;
+    out_settle = 2; // ~10 ms @ 5 ms/tick
+    break;
+  default:
+    break;
+  }
+}
+
+void light_rqt_u8(uint8_t rqt, uint8_t src, uint8_t a) {
+  (void)src;
+  switch (rqt) {
+  case LIGHT_RQT_PULSE_LED:
+    do_pulse_led(a);
+    break;
+  case LIGHT_RQT_SET_PULSE:
+    do_set_pulse(a);
+    break;
+  case LIGHT_RQT_SET_CPULSE:
+    do_set_cpulse(a);
+    break;
+  default:
+    break;
+  }
+}
+
+void light_rqt_u8_u8(uint8_t rqt, uint8_t src, uint8_t a, uint8_t b) {
+  (void)src;
+  switch (rqt) {
+  case LIGHT_RQT_SET_AUTO_OFF:
+    do_set_auto_off(a, b);
+    break;
+  default:
+    break;
+  }
+}
+
+void light_set_rgb_led(uint8_t led, uint8_t r, uint8_t g, uint8_t b) {
+  if (led >= LED_COUNT)
+    return;
+  colors[led].r = r;
+  colors[led].g = g;
+  colors[led].b = b;
+}
+
+void light_set_brightness_led(uint8_t led, uint8_t bri) {
+  if (led >= LED_COUNT)
+    return;
+  brightness[led] = bri;
+}
+
+void light_set_brightness_all(uint8_t bri) {
+  uint8_t i;
+  for (i = 0; i < LED_COUNT; i++)
+    brightness[i] = bri;
+}
+
+void light_tick(void) {
+  leds_idle_tick();
+  if (out_dirty) {
+    if (out_settle)
+      out_settle--;
+    else {
+      out_dirty = 0;
+      do_output_change();
+    }
+  }
+  neo_update();
+}

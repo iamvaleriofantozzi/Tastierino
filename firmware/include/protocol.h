@@ -1,7 +1,7 @@
 #pragma once
 
 #define RAW_PACKET_SIZE       32
-#define PROTOCOL_VERSION      5
+#define PROTOCOL_VERSION      6
 #define MACRO_STEPS           2  /* max sequential taps on layer 0 (Tap) */
 
 #define CMD_SET_RGB           0x01
@@ -16,6 +16,9 @@
 #define CMD_GET_KEYMAP        0x0A
 #define CMD_SET_LT_MASK       0x0B
 #define CMD_SET_AUTO_OFF      0x0C
+#define CMD_SET_RGB_LED       0x0D  /* per-LED: [cmd, led, r, g, b] — device owns other LEDs */
+#define CMD_SET_BRIGHTNESS_LED 0x0E /* per-LED: [cmd, led, bri] */
+#define CMD_SET_CPULSE        0x0F  /* continuous pulse: [cmd, mask] — bit 0..2 = LED 0..2 */
 #define CMD_RESPONSE          0x80
 
 #define STATUS_OK             0

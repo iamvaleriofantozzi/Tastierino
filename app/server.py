@@ -70,28 +70,55 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/rgb":
                 data = self.read_json()
-                colors = data["colors"]
-                if len(colors) != 3 or any(len(c) != 3 or any(not isinstance(x, int) or x < 0 or x > 255 for x in c) for c in colors):
-                    raise ValueError("Invalid RGB colors")
-                DEVICE.set_rgb(colors)
-                if "brightness" in data:
-                    values = data["brightness"]
-                    if isinstance(values, int):
-                        values = [values] * 3
-                    if len(values) != 3 or any(not isinstance(value, int) or not 0 <= value <= 255 for value in values):
-                        raise ValueError("Invalid brightness")
-                    DEVICE.set_brightness(values)
-                if "pulse" in data:
+                # Targeted per-LED form: device owns untouched LEDs (no stale host state)
+                led = data.get("led")
+                if led is not None:
+                    led = int(led)
+                    if led not in range(3):
+                        raise ValueError("Invalid LED index")
+                    if "color" in data:
+                        color = data["color"]
+                        if len(color) != 3 or any(not isinstance(x, int) or x < 0 or x > 255 for x in color):
+                            raise ValueError("Invalid RGB color")
+                        DEVICE.set_rgb_led(led, color)
+                    if "brightness" in data:
+                        value = data["brightness"]
+                        if not isinstance(value, int) or not 0 <= value <= 255:
+                            raise ValueError("Invalid brightness")
+                        DEVICE.set_brightness_led(led, value)
+                else:
+                    colors = data.get("colors")
+                    if colors is not None:
+                        if len(colors) != 3 or any(len(c) != 3 or any(not isinstance(x, int) or x < 0 or x > 255 for x in c) for c in colors):
+                            raise ValueError("Invalid RGB colors")
+                        DEVICE.set_rgb(colors)
+                        if "brightness" in data:
+                            values = data["brightness"]
+                            if isinstance(values, int):
+                                values = [values] * 3
+                            if len(values) != 3 or any(not isinstance(value, int) or not 0 <= value <= 255 for value in values):
+                                raise ValueError("Invalid brightness")
+                            DEVICE.set_brightness(values)
+                # Pulse / auto-off: only when explicitly sent as changed.
+                # Resending them every RGB tweak caused SET_AUTO_OFF→wake to yank fades.
+                if data.get("apply_pulse"):
                     pulse = data["pulse"]
                     if len(pulse) != 3 or any(not isinstance(flag, bool) for flag in pulse):
                         raise ValueError("Invalid pulse flags")
                     DEVICE.set_pulse(pulse)
-                if "auto_off_enabled" in data or "auto_off_steps" in data:
+                if data.get("apply_auto_off"):
                     enabled = bool(data.get("auto_off_enabled", False))
                     steps = int(data.get("auto_off_steps", 9))
                     if not 0 <= steps <= 33:
                         raise ValueError("Invalid auto-off timeout")
                     DEVICE.set_auto_off(enabled, steps)
+                if data.get("apply_cpulse"):
+                    cpulse = data["cpulse"]
+                    if len(cpulse) != 3 or any(not isinstance(flag, bool) for flag in cpulse):
+                        raise ValueError("Invalid cpulse flags")
+                    DEVICE.set_continuous_pulse(
+                        sum((1 << i) for i, flag in enumerate(cpulse) if flag)
+                    )
                 self.send_json(200, {"ok": True})
             elif path == "/api/keymap":
                 data = self.read_json()

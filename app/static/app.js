@@ -7,6 +7,8 @@ const QUICK_COLORS = ["#ff0000","#ff8c00","#ffd400","#00ff50","#0050ff","#ffffff
 let colors = [[0,80,255],[0,255,80],[255,20,0]];
 let brightness = [160,160,160];
 let pulse = [true, true, true];
+let cpulse = [false, false, false]; // continuous pulse (pulse curve loops until toggled off)
+let lastColorsBeforeOff = null;
 let autoOffEnabled = false;
 let autoOffSteps = 9; // index into AUTO_OFF_SECONDS → 60s
 const AUTO_OFF_SECONDS = [0, 1, 3, 5, ...Array.from({length: 30}, (_, i) => (i + 1) * 10)];
@@ -154,7 +156,24 @@ function paintPreview() {
     btn.classList.toggle("is-on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
+  $$("[data-cpulse]").forEach((btn, i) => {
+    const on = !!cpulse[i];
+    btn.classList.toggle("is-on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  syncLightsToggle();
   paintAutoOff();
+}
+
+function allLightsOff() {
+  return brightness.every(b => (b | 0) === 0);
+}
+
+function syncLightsToggle() {
+  const btn = $("#lightsOff");
+  if (!btn) return;
+  const off = allLightsOff();
+  btn.textContent = off ? "Turn all on" : "Turn all off";
 }
 
 function formatAutoOff(index) {
@@ -180,21 +199,39 @@ function paintAutoOff() {
   value.value = formatAutoOff(autoOffSteps);
 }
 
-async function sendRgb() {
+async function sendRgb(opts = {}) {
   try {
-    await post("/api/rgb", {
-      colors,
-      brightness,
-      pulse,
-      auto_off_enabled: !!autoOffEnabled,
-      auto_off_steps: autoOffSteps | 0,
-    });
+    const body = {};
+    // Targeted per-LED write: device owns untouched LEDs (no stale host state → no ghost dips)
+    if (typeof opts.led === "number" && opts.led >= 0 && opts.led < 3) {
+      body.led = opts.led;
+      if (opts.brightness) body.brightness = brightness[opts.led] | 0;
+      else body.color = colors[opts.led].map(n => n | 0);
+    } else if (!opts.skipLeds) {
+      body.colors = colors.map(c => c.map(n => n | 0));
+      body.brightness = brightness.map(n => n | 0);
+    }
+    if (opts.applyPulse) {
+      body.pulse = pulse;
+      body.apply_pulse = true;
+    }
+    if (opts.applyAutoOff) {
+      body.auto_off_enabled = !!autoOffEnabled;
+      body.auto_off_steps = autoOffSteps | 0;
+      body.apply_auto_off = true;
+    }
+    if (opts.applyCpulse) {
+      body.cpulse = cpulse;
+      body.apply_cpulse = true;
+    }
+    if (!Object.keys(body).length) return;
+    await post("/api/rgb", body);
   } catch (error) { log(`LED: ${error.message}`); }
 }
 
-function queueRgb() {
+function queueRgb(opts) {
   clearTimeout(rgbTimer);
-  rgbTimer = setTimeout(sendRgb, 80);
+  rgbTimer = setTimeout(() => sendRgb(opts), 80);
   queueSettingsSave();
 }
 
@@ -731,6 +768,7 @@ function settingsSnapshot() {
     pulse: pulse.map(Boolean),
     auto_off_enabled: !!autoOffEnabled,
     auto_off_steps: autoOffSteps | 0,
+    cpulse: cpulse.map(Boolean),
   };
 }
 
@@ -768,6 +806,9 @@ function applySettingsSnapshot(data) {
   }
   if (typeof data.auto_off_steps === "number") {
     autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, data.auto_off_steps | 0));
+  }
+  if (Array.isArray(data.cpulse) && data.cpulse.length === 3) {
+    cpulse = data.cpulse.map(Boolean);
   }
   return !keysEmpty(layerKeys[0]);
 }
@@ -1102,12 +1143,8 @@ function holdEntriesFromDevice(mask, keysL0, keysFn) {
   return dedupeHoldEntries(entries);
 }
 
-function applyDeviceKeymap(config) {
-  layerKeys[0] = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
-  applyFnLayers(config.keys_fn, config.keys_l1);
-  ltMask = typeof config.lt_mask === "number" ? config.lt_mask & 0x0f : 0;
-  const keysFn = [1, 2, 3, 4].map(i => layerKeys[i]);
-  holdEntries = holdEntriesFromDevice(ltMask, layerKeys[0], keysFn);
+/** Lighting state: device is source of truth (it owns colors/brightness + fades). */
+function applyDeviceLighting(config) {
   if (Array.isArray(config.colors) && config.colors.length === 3) {
     colors = config.colors.map(c => c.map(n => Math.max(0, Math.min(255, n | 0))));
   }
@@ -1123,6 +1160,18 @@ function applyDeviceKeymap(config) {
   if (typeof config.auto_off_steps === "number") {
     autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, config.auto_off_steps | 0));
   }
+  if (Array.isArray(config.cpulse) && config.cpulse.length === 3) {
+    cpulse = config.cpulse.map(Boolean);
+  }
+}
+
+function applyDeviceKeymap(config) {
+  layerKeys[0] = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
+  applyFnLayers(config.keys_fn, config.keys_l1);
+  ltMask = typeof config.lt_mask === "number" ? config.lt_mask & 0x0f : 0;
+  const keysFn = [1, 2, 3, 4].map(i => layerKeys[i]);
+  holdEntries = holdEntriesFromDevice(ltMask, layerKeys[0], keysFn);
+  applyDeviceLighting(config);
 }
 
 document.addEventListener("click", event => {
@@ -1144,6 +1193,10 @@ async function refresh() {
       if (info.connected) {
         try {
           const config = await api("/api/config");
+          // Lighting: device owns it — sync UI from device even when settings draft exists
+          applyDeviceLighting(config);
+          paintPreview();
+          paintAutoOff();
           const deviceL0 = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
           const deviceFn = Array.isArray(config.keys_fn) && config.keys_fn.length === 4
             ? config.keys_fn.map(layer => cloneKeys(layer, DEFAULT_KEYS_FN))
@@ -1229,7 +1282,7 @@ const colorPicker = (() => {
     colors[led] = rgb.map(n => Math.max(0, Math.min(255, n | 0)));
     if (paint) paintPreview();
     else syncChrome();
-    if (send) queueRgb();
+    if (send) queueRgb({ led });
   }
 
   function syncChrome() {
@@ -1397,26 +1450,26 @@ $$('[data-color]').forEach(input => input.addEventListener("input", () => {
   colors[Number(input.dataset.color)] = hexToRgb(input.value);
   paintPreview();
   colorPicker.syncFromState();
-  queueRgb();
+  queueRgb({ led: Number(input.dataset.color) });
 }));
 
 $$('[data-brightness]').forEach(input => input.addEventListener("input", () => {
   brightness[Number(input.dataset.brightness)] = Number(input.value);
   paintPreview();
-  queueRgb();
+  queueRgb({ led: Number(input.dataset.brightness), brightness: true });
 }));
 
 $("#autoOffToggle")?.addEventListener("click", () => {
   autoOffEnabled = !autoOffEnabled;
   paintAutoOff();
-  queueRgb();
+  queueRgb({ applyAutoOff: true, skipLeds: true });
   queueSettingsSave();
 });
 
 $("#autoOffSteps")?.addEventListener("input", () => {
   autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, Number($("#autoOffSteps").value) | 0));
   paintAutoOff();
-  queueRgb();
+  queueRgb({ applyAutoOff: true, skipLeds: true });
   queueSettingsSave();
 });
 
@@ -1438,7 +1491,15 @@ $(".light-rows")?.addEventListener("click", event => {
     const led = Number(pulseBtn.dataset.pulse);
     pulse[led] = !pulse[led];
     paintPreview();
-    queueRgb();
+    queueRgb({ applyPulse: true, skipLeds: true });
+    return;
+  }
+  const cpulseBtn = event.target.closest("[data-cpulse]");
+  if (cpulseBtn) {
+    const led = Number(cpulseBtn.dataset.cpulse);
+    cpulse[led] = !cpulse[led];
+    paintPreview();
+    queueRgb({ applyCpulse: true, skipLeds: true });
     return;
   }
   const btn = event.target.closest("[data-quick]");
@@ -1447,12 +1508,18 @@ $(".light-rows")?.addEventListener("click", event => {
   colors[led] = hexToRgb(btn.dataset.quick);
   paintPreview();
   colorPicker.syncFromState();
-  queueRgb();
+  queueRgb({ led });
 });
 
 $("#lightsOff").addEventListener("click", () => {
-  colors = [[0,0,0],[0,0,0],[0,0,0]];
-  brightness = [0,0,0];
+  if (allLightsOff()) {
+    colors = (lastColorsBeforeOff || [[0,80,255],[0,255,80],[255,20,0]]).map(c => c.slice());
+    brightness = [255, 255, 255];
+  } else {
+    lastColorsBeforeOff = colors.map(c => c.slice());
+    colors = [[0,0,0],[0,0,0],[0,0,0]];
+    brightness = [0,0,0];
+  }
   paintPreview();
   colorPicker.syncFromState();
   queueRgb();

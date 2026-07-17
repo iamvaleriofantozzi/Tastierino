@@ -820,6 +820,38 @@ main {
   display: block;
 }
 
+.cpulse-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: var(--hairline) solid var(--glass-stroke-soft);
+  background: var(--glass);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.cpulse-toggle:hover {
+  border-color: var(--glass-stroke);
+  color: var(--text);
+}
+
+.cpulse-toggle.is-on {
+  color: var(--blue);
+  border-color: var(--pulse-on-border);
+  background: var(--pulse-on);
+}
+
+.cpulse-toggle svg {
+  display: block;
+}
+
 .quick-colors {
   display: flex;
   flex-wrap: nowrap;

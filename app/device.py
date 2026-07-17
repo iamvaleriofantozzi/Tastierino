@@ -197,22 +197,39 @@ class MacroPad:
         auto_off_steps = r[16] if len(r) > 16 else 9
         if auto_off_steps > protocol.AUTO_OFF_MAX_INDEX:
             auto_off_steps = protocol.AUTO_OFF_MAX_INDEX
+        cpulse_raw = r[17] & 0x07 if len(r) > 17 else 0
         return {
             "brightness": [r[2], r[3], r[4]],
             "colors": colors,
             "pulse": [bool(mask & (1 << i)) for i in range(3)],
             "auto_off_enabled": auto_off_enabled,
             "auto_off_steps": auto_off_steps,
+            "cpulse": [bool(cpulse_raw & (1 << i)) for i in range(3)],
         }
 
     def set_rgb(self, colors):
         payload = bytes(channel for color in colors for channel in color)
         self.exchange(protocol.SET_RGB, payload)
 
+    def set_rgb_led(self, led, color):
+        if not 0 <= led <= 2:
+            raise DeviceError("Invalid LED index")
+        if len(color) != 3 or any(not 0 <= int(c) <= 255 for c in color):
+            raise DeviceError("Invalid RGB color")
+        self.exchange(protocol.SET_RGB_LED, bytes([led]) + bytes(int(c) for c in color))
+
     def set_brightness(self, values):
         if isinstance(values, int):
             values = [values] * 3
         self.exchange(protocol.SET_BRIGHTNESS, bytes(values))
+
+    def set_brightness_led(self, led, value):
+        if not 0 <= led <= 2:
+            raise DeviceError("Invalid LED index")
+        value = int(value)
+        if not 0 <= value <= 255:
+            raise DeviceError("Invalid brightness")
+        self.exchange(protocol.SET_BRIGHTNESS_LED, bytes([led, value]))
 
     def set_pulse(self, enabled):
         if len(enabled) != 3 or any(not isinstance(flag, bool) for flag in enabled):
@@ -227,6 +244,11 @@ class MacroPad:
         if not 0 <= steps <= protocol.AUTO_OFF_MAX_INDEX:
             raise DeviceError("Invalid auto-off timeout")
         self.exchange(protocol.SET_AUTO_OFF, bytes([1 if enabled else 0, steps]))
+
+    def set_continuous_pulse(self, mask):
+        if not isinstance(mask, int) or not 0 <= mask <= 0x07:
+            raise DeviceError("Invalid cpulse mask")
+        self.exchange(protocol.SET_CPULSE, bytes([mask & 0x07]))
 
     def set_lt_mask(self, mask):
         if not isinstance(mask, int) or not 0 <= mask <= 0x0F:
