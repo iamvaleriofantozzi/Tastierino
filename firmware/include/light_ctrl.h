@@ -17,6 +17,13 @@
 #define LIGHT_TICKS_PER_SEC  (1000 / LIGHT_LOOP_MS)
 // -----------------------------------------------------------------------------
 
+// --- Continuous breathing ----------------------------------------------------
+// Full 100%→minimum→100% cycle. Supported range: 500..3000 ms.
+#define BREATH_PERIOD_MS       500
+// Minimum relative brightness: 20 means initial brightness / 20.
+#define BREATH_MIN_DIVISOR     20
+// -----------------------------------------------------------------------------
+
 #define LIGHT_SRC_USER      0
 #define LIGHT_SRC_EXTERNAL  1
 #define LIGHT_SRC_INTERNAL  2

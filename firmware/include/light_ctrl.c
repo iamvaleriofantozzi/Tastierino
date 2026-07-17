@@ -7,9 +7,7 @@
 #include <ch554.h>
 
 #define PRESS_PULSE_LEN 16
-#define BREATH_TICK_DIV 2 /* 256 phases × 10 ms = 2.56 s/cycle */
 #define U8_FULL_SCALE 255
-#define BREATH_MIN_DIVISOR 5
 #define BREATH_MIN_SCALE (U8_FULL_SCALE / BREATH_MIN_DIVISOR)
 #define BREATH_DROP_SCALE (U8_FULL_SCALE - BREATH_MIN_SCALE)
 #define BREATH_PHASE_HALF 128
@@ -20,6 +18,17 @@
 #define BREATH_DROP_COEFFICIENT \
   (((BREATH_DROP_SCALE * BREATH_EASE_SCALE) + BREATH_EASE_MAX - 1) / \
    BREATH_EASE_MAX)
+#define BREATH_PERIOD_TICKS \
+  ((BREATH_PERIOD_MS + (LIGHT_LOOP_MS / 2)) / LIGHT_LOOP_MS)
+#define BREATH_PHASE_INCREMENT \
+  ((65536UL + (BREATH_PERIOD_TICKS / 2)) / BREATH_PERIOD_TICKS)
+
+#if BREATH_PERIOD_MS < 500 || BREATH_PERIOD_MS > 3000
+#error BREATH_PERIOD_MS must be between 500 and 3000
+#endif
+#if BREATH_MIN_DIVISOR < 2 || BREATH_MIN_DIVISOR > 255
+#error BREATH_MIN_DIVISOR must be between 2 and 255
+#endif
 
 struct RGBColor colors[LED_COUNT];
 uint8_t brightness[LED_COUNT];
@@ -27,8 +36,7 @@ static __xdata uint8_t pulse_t[LED_COUNT];
 uint8_t pulse_en;
 uint8_t cpulse_en;
 static __xdata uint8_t cpulse_pre_bri[LED_COUNT];
-static __xdata uint8_t cpulse_phase[LED_COUNT];
-static uint8_t cpulse_tick_div;
+static __xdata uint16_t cpulse_phase_accum[LED_COUNT];
 uint8_t auto_off_en;
 uint8_t auto_off_index;
 static uint16_t idle_ticks;
@@ -297,12 +305,12 @@ static void do_set_cpulse(uint8_t mask) {
       cpulse_pre_bri[i] = brightness[i];
       cpulse_en |= bit;
       pulse_t[i] = 0;
-      cpulse_phase[i] = 0;
+      cpulse_phase_accum[i] = 0;
       changed = 1;
     } else if (!(mask & bit) && (cpulse_en & bit)) {
       cpulse_en &= ~bit;
       pulse_t[i] = 0;
-      cpulse_phase[i] = 0;
+      cpulse_phase_accum[i] = 0;
       brightness[i] = cpulse_pre_bri[i];
       changed = 1;
     }
@@ -387,7 +395,7 @@ static void neo_update(void) {
       nr[i] = v; ng[i] = v; nb[i] = v;
     } else {
       if (cpulse_en & (1 << i))
-        factor = breath_factor(cpulse_phase[i]);
+        factor = breath_factor((uint8_t)(cpulse_phase_accum[i] >> 8));
       else if (pulse_t[i])
         factor = press_pulse_curve[PRESS_PULSE_LEN - pulse_t[i]];
       else
@@ -410,13 +418,11 @@ static void neo_update(void) {
     if (pulse_t[i])
       pulse_t[i]--;
 
-  cpulse_tick_div++;
-  if (cpulse_tick_div >= BREATH_TICK_DIV) {
-    cpulse_tick_div = 0;
-    for (i = 0; i < LED_COUNT; i++)
-      if (cpulse_en & (1 << i))
-        cpulse_phase[i]++;
-  }
+  // Fixed-point phase: short periods skip imperceptible levels; long periods
+  // repeat levels. Phase wraps naturally at 16 bits with no endpoint blink.
+  for (i = 0; i < LED_COUNT; i++)
+    if (cpulse_en & (1 << i))
+      cpulse_phase_accum[i] += (uint16_t)BREATH_PHASE_INCREMENT;
   leds_fade_tick();
 }
 
@@ -425,7 +431,7 @@ void light_init(void) {
   for (i = 0; i < LED_COUNT; i++) {
     pulse_t[i] = 0;
     cpulse_pre_bri[i] = 0;
-    cpulse_phase[i] = 0;
+    cpulse_phase_accum[i] = 0;
     led_fade[i] = 0;
     led_fade_tgt[i] = 0;
     out_dip_tgt[i] = 0;
@@ -438,7 +444,6 @@ void light_init(void) {
   out_settle = 0;
   idle_ticks = 0;
   cpulse_en = 0;
-  cpulse_tick_div = 0;
 }
 
 void light_rqt(uint8_t rqt, uint8_t src) {
