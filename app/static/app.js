@@ -1,12 +1,40 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const controls = ["Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise"];
+const LT_CAPABLE = 4;
 const QUICK_COLORS = ["#ff0000","#ff8c00","#ffd400","#00ff50","#0050ff","#ffffff"];
 let colors = [[0,80,255],[0,255,80],[255,20,0]];
 let brightness = [160,160,160];
 let pulse = [true, true, true];
 let uploaded = false;
 let rgbTimer;
+let ltMask = 0;
+let holdEntries = []; // {fn, target} — hold Fn key, remap target key
+let layerKeys = [
+  [
+    {mod:0,type:0,code:0x68},{mod:0,type:0,code:0x69},{mod:0,type:0,code:0x6a},
+    {mod:0,type:1,code:0xe2},{mod:0,type:1,code:0xe9},{mod:0,type:1,code:0xea},
+  ],
+  [
+    {mod:0,type:0,code:0x6b},{mod:0,type:0,code:0x6c},{mod:0,type:0,code:0x6d},
+    {mod:0,type:1,code:0xcd},{mod:0,type:1,code:0xb5},{mod:0,type:1,code:0xb6},
+  ],
+  [
+    {mod:0,type:0,code:0x6b},{mod:0,type:0,code:0x6c},{mod:0,type:0,code:0x6d},
+    {mod:0,type:1,code:0xcd},{mod:0,type:1,code:0xb5},{mod:0,type:1,code:0xb6},
+  ],
+  [
+    {mod:0,type:0,code:0x6b},{mod:0,type:0,code:0x6c},{mod:0,type:0,code:0x6d},
+    {mod:0,type:1,code:0xcd},{mod:0,type:1,code:0xb5},{mod:0,type:1,code:0xb6},
+  ],
+  [
+    {mod:0,type:0,code:0x6b},{mod:0,type:0,code:0x6c},{mod:0,type:0,code:0x6d},
+    {mod:0,type:1,code:0xcd},{mod:0,type:1,code:0xb5},{mod:0,type:1,code:0xb6},
+  ],
+];
+const DEFAULT_KEYS = layerKeys[0].map(k => ({...k}));
+const DEFAULT_KEYS_FN = layerKeys[1].map(k => ({...k}));
+let settingsTimer = null;
 
 function log(message) {
   const area = $("#log");
@@ -111,14 +139,13 @@ async function sendRgb() {
   } catch (error) { log(`LED: ${error.message}`); }
 }
 
-function queueRgb() { clearTimeout(rgbTimer); rgbTimer = setTimeout(sendRgb, 80); }
+function queueRgb() {
+  clearTimeout(rgbTimer);
+  rgbTimer = setTimeout(sendRgb, 80);
+  queueSettingsSave();
+}
 
 const MOD_CTRL = 1, MOD_SHIFT = 2, MOD_ALT = 4, MOD_GUI = 8;
-const DEFAULT_KEYS = [
-  {mod:0,type:0,code:0x68},{mod:0,type:0,code:0x69},{mod:0,type:0,code:0x6a},
-  {mod:0,type:1,code:0xe2},{mod:0,type:1,code:0xe9},{mod:0,type:1,code:0xea},
-];
-
 const KEY_CATALOG = [
   ["Letters", [
     ["A",0,0x04],["B",0,0x05],["C",0,0x06],["D",0,0x07],["E",0,0x08],["F",0,0x09],
@@ -152,6 +179,10 @@ const KEY_CATALOG = [
     ["Play / Pause",1,0xcd],["Next Track",1,0xb5],["Prev Track",1,0xb6],
     ["Stop",1,0xb7],["Eject",1,0xb8],
   ]],
+  ["Mouse", [
+    ["Left Click",2,0x01],["Right Click",2,0x02],["Middle Click",2,0x04],
+    ["Scroll Up",2,0x10],["Scroll Down",2,0x11],
+  ]],
 ];
 
 const LABEL_BY_ACTION = new Map(
@@ -183,7 +214,8 @@ const MEDIA_CODES = new Set([0xe2,0xe9,0xea,0xcd,0xb5,0xb6,0xb7,0xb8]);
 const MOD_EVENT = {Control: MOD_CTRL, Shift: MOD_SHIFT, Alt: MOD_ALT, Meta: MOD_GUI};
 
 function keyLabel(type, code) {
-  return LABEL_BY_ACTION.get(`${type}:${code}`) || (type === 1 ? `Media 0x${code.toString(16)}` : `0x${code.toString(16)}`);
+  return LABEL_BY_ACTION.get(`${type}:${code}`)
+    || (type === 1 ? `Media 0x${code.toString(16)}` : type === 2 ? `Mouse 0x${code.toString(16)}` : `0x${code.toString(16)}`);
 }
 
 function shortcutChips({type, mod, code}, {pendingMod = 0} = {}) {
@@ -200,7 +232,7 @@ function shortcutChips({type, mod, code}, {pendingMod = 0} = {}) {
     if (pendingMod & MOD_SHIFT) chips.push("⇧");
     if (pendingMod & MOD_GUI) chips.push("⌘");
   }
-  if (code || type === 1) chips.push(keyLabel(type, code));
+  if (code || type === 1 || type === 2) chips.push(keyLabel(type, code));
   return chips;
 }
 
@@ -209,16 +241,30 @@ function shortcutText(binding, opts) {
 }
 
 function getRowBinding(row) {
+  const type = Number(row.dataset.type);
+  const mod = Number(row.dataset.mod);
+  const code = Number(row.dataset.code);
   return {
-    type: Number(row.dataset.type) || 0,
-    mod: Number(row.dataset.mod) || 0,
-    code: Number(row.dataset.code) || 0,
+    type: Number.isFinite(type) ? type : 0,
+    mod: Number.isFinite(mod) ? mod : 0,
+    code: Number.isFinite(code) ? code : 0,
   };
+}
+
+function rowLabel(row) {
+  const name = row.querySelector(".key-name")?.textContent;
+  if (name) return name;
+  const fn = row.querySelector(".fn-select")?.selectedOptions?.[0]?.textContent;
+  const target = row.querySelector(".target-select")?.selectedOptions?.[0]?.textContent;
+  if (fn && target) return `Fn ${fn} → ${target}`;
+  if (fn) return fn;
+  return "Key";
 }
 
 function paintHotkeyField(row, {pendingMod = 0, recording = false} = {}) {
   const binding = getRowBinding(row);
   const field = row.querySelector(".hotkey-field");
+  if (!field) return;
   const chips = recording
     ? shortcutChips({type: 0, mod: 0, code: 0}, {pendingMod})
     : shortcutChips(binding, {pendingMod});
@@ -231,13 +277,13 @@ function paintHotkeyField(row, {pendingMod = 0, recording = false} = {}) {
   const spoken = recording
     ? (chips.join(" ") || "Recording")
     : shortcutText(binding, {pendingMod});
-  field.setAttribute("aria-label", `${row.querySelector(".key-name").textContent}: ${spoken}`);
+  field.setAttribute("aria-label", `${rowLabel(row)}: ${spoken}`);
 }
 
 function setRowBinding(row, {type, mod, code}) {
   const next = {
     type: type | 0,
-    mod: type === 1 ? 0 : (mod | 0),
+    mod: type === 0 ? (mod | 0) : 0,
     code: code | 0,
   };
   row.dataset.type = String(next.type);
@@ -268,11 +314,11 @@ const hotkeyPicker = (() => {
   });
 
   function syncModChips() {
-    const media = KEY_CATALOG[catIndex][0] === "Media";
-    pop.querySelector(".hotkey-mod-row").hidden = media;
+    const noMod = KEY_CATALOG[catIndex][0] === "Media" || KEY_CATALOG[catIndex][0] === "Mouse";
+    pop.querySelector(".hotkey-mod-row").hidden = noMod;
     pop.querySelectorAll("[data-pick-mod]").forEach(btn => {
       const bit = Number(btn.dataset.pickMod);
-      const on = !media && !!(pickMod & bit);
+      const on = !noMod && !!(pickMod & bit);
       btn.classList.toggle("is-on", on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
     });
@@ -332,10 +378,13 @@ const hotkeyPicker = (() => {
 
   function open(targetRow) {
     stopRecord({keep: false});
+    if (anchor && anchor !== targetRow.querySelector(".hotkey-field")) {
+      anchor.setAttribute("aria-expanded", "false");
+    }
     row = targetRow;
     anchor = row.querySelector(".hotkey-field");
     const binding = getRowBinding(row);
-    pickMod = binding.type === 1 ? 0 : binding.mod;
+    pickMod = binding.type === 0 ? binding.mod : 0;
     const found = KEY_CATALOG.findIndex(([, entries]) =>
       entries.some(([, type, code]) => type === binding.type && code === binding.code));
     catIndex = found >= 0 ? found : 0;
@@ -345,20 +394,22 @@ const hotkeyPicker = (() => {
     anchor?.setAttribute("aria-expanded", "true");
   }
 
-  function close() {
+  function close({commit = false} = {}) {
     if (pop.hidden && !row) return;
+    const pending = commit && row ? row : null;
     cancelAnimationFrame(raf);
     pop.hidden = true;
     anchor?.setAttribute("aria-expanded", "false");
     row = null;
     anchor = null;
+    if (pending) commitSettingsServer();
   }
 
   cats.addEventListener("click", event => {
     const btn = event.target.closest("[data-cat]");
     if (!btn) return;
     catIndex = Number(btn.dataset.cat);
-    if (KEY_CATALOG[catIndex][0] === "Media") pickMod = 0;
+    if (KEY_CATALOG[catIndex][0] === "Media" || KEY_CATALOG[catIndex][0] === "Mouse") pickMod = 0;
     renderKeys();
     schedulePosition();
   });
@@ -372,7 +423,8 @@ const hotkeyPicker = (() => {
     const binding = getRowBinding(row);
     if (binding.type === 0 && binding.code) {
       setRowBinding(row, {...binding, mod: pickMod});
-      log(`Set ${row.querySelector(".key-name").textContent}: ${shortcutText(getRowBinding(row))}`);
+      log(`Set ${rowLabel(row)}: ${shortcutText(getRowBinding(row))}`);
+      commitSettingsServer();
     }
   });
 
@@ -381,24 +433,27 @@ const hotkeyPicker = (() => {
     if (!btn || !row) return;
     const type = Number(btn.dataset.type);
     const code = Number(btn.dataset.code);
-    setRowBinding(row, {type, mod: type === 1 ? 0 : pickMod, code});
-    log(`Set ${row.querySelector(".key-name").textContent}: ${shortcutText(getRowBinding(row))}`);
+    setRowBinding(row, {type, mod: type === 0 ? pickMod : 0, code});
+    log(`Set ${rowLabel(row)}: ${shortcutText(getRowBinding(row))}`);
+    commitSettingsServer();
     close();
   });
 
-  pop.querySelector("[data-close-hotkey]").addEventListener("click", close);
+  pop.querySelector("[data-close-hotkey]").addEventListener("click", () => close({commit: true}));
 
   document.addEventListener("pointerdown", event => {
     if (pop.hidden) return;
     if (pop.contains(event.target)) return;
-    if (event.target.closest(".hotkey-field")) return;
-    close();
+    const field = event.target.closest(".hotkey-field");
+    // Same field: keep open for the following click. Other field/outside: close + persist mods.
+    if (field && field === anchor) return;
+    close({commit: true});
   });
 
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && !pop.hidden) {
       event.preventDefault();
-      close();
+      close({commit: true});
     }
   });
 
@@ -423,6 +478,7 @@ function stopRecord({keep = true} = {}) {
     if (keep) {
       const label = shortcutText(getRowBinding(recordTarget));
       if (label !== "Set shortcut…") log(`Recorded ${label}.`);
+      commitSettingsServer();
     }
     paintHotkeyField(recordTarget);
   }
@@ -431,7 +487,7 @@ function stopRecord({keep = true} = {}) {
 }
 
 function startRecord(row) {
-  hotkeyPicker.close();
+  hotkeyPicker.close({commit: true});
   if (recordTarget === row) {
     stopRecord({keep: true});
     return;
@@ -486,39 +542,348 @@ document.addEventListener("keydown", event => {
   recordIdleTimer = setTimeout(() => stopRecord({keep: true}), 400);
 }, true);
 
-function createKeyRows(keys) {
-  hotkeyPicker.close();
-  stopRecord({keep: false});
+function cloneKeys(keys, fallback) {
+  return (keys || fallback).map((key, i) => ({
+    mod: key?.mod ?? fallback[i].mod,
+    type: key?.type ?? fallback[i].type,
+    code: key?.code ?? fallback[i].code,
+  }));
+}
+
+function keysEmpty(keys) {
+  return !(keys || []).some(k => (k?.code ?? 0) !== 0);
+}
+
+function settingsSnapshot() {
+  storeTapKeys();
+  storeHoldKeys();
+  const keysFn = [1, 2, 3, 4].map(i =>
+    layerKeys[i].map(k => ({mod: k.mod | 0, type: k.type | 0, code: k.code | 0}))
+  );
+  return {
+    v: 2,
+    keys_l0: layerKeys[0].map(k => ({mod: k.mod | 0, type: k.type | 0, code: k.code | 0})),
+    keys_fn: keysFn,
+    keys_l1: keysFn[0],
+    lt_mask: ltMask & 0x0f,
+    hold_entries: holdEntries.map(e => ({fn: e.fn | 0, target: e.target | 0})),
+    colors: colors.map(c => c.map(n => n | 0)),
+    brightness: brightness.map(n => n | 0),
+    pulse: pulse.map(Boolean),
+  };
+}
+
+function applyFnLayers(keysFn, legacyL1) {
+  const source = Array.isArray(keysFn) && keysFn.length === 4
+    ? keysFn
+    : [legacyL1, legacyL1, legacyL1, legacyL1];
+  for (let fn = 0; fn < LT_CAPABLE; fn++) {
+    layerKeys[1 + fn] = cloneKeys(source[fn] || source[0] || DEFAULT_KEYS_FN, DEFAULT_KEYS_FN);
+  }
+}
+
+function applySettingsSnapshot(data) {
+  if (!data) return false;
+  layerKeys[0] = cloneKeys(data.keys_l0 || data.keys, DEFAULT_KEYS);
+  applyFnLayers(data.keys_fn, data.keys_l1);
+  ltMask = typeof data.lt_mask === "number" ? data.lt_mask & 0x0f : 0;
+  const holds = data.hold_entries || data.holdEntries;
+  if (Array.isArray(holds) && holds.length) {
+    holdEntries = dedupeHoldEntries(holds);
+  } else {
+    holdEntries = holdEntriesFromMask(ltMask);
+  }
+  if (Array.isArray(data.colors) && data.colors.length === 3) {
+    colors = data.colors.map(c => c.map(n => Math.max(0, Math.min(255, n | 0))));
+  }
+  if (Array.isArray(data.brightness) && data.brightness.length === 3) {
+    brightness = data.brightness.map(n => Math.max(0, Math.min(255, n | 0)));
+  }
+  if (Array.isArray(data.pulse) && data.pulse.length === 3) {
+    pulse = data.pulse.map(Boolean);
+  }
+  return !keysEmpty(layerKeys[0]);
+}
+
+async function persistSettingsServer() {
+  const snapshot = settingsSnapshot();
+  await post("/api/settings", snapshot);
+  return snapshot;
+}
+
+function queueSettingsSave() {
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => {
+    persistSettingsServer().catch(e => log(`Settings save: ${e.message}`));
+  }, 350);
+}
+
+function commitSettingsServer() {
+  storeTapKeys();
+  storeHoldKeys();
+  queueSettingsSave();
+}
+
+function wireHotkeyRow(row, onReset) {
+  row.querySelector(".hotkey-field").addEventListener("click", () => {
+    if (recordTarget === row) return;
+    hotkeyPicker.open(row);
+  });
+  row.querySelector(".record").addEventListener("click", () => startRecord(row));
+  row.querySelector(".clear-hotkey")?.addEventListener("click", onReset);
+}
+
+function storeTapKeys() {
+  const rows = $$("#keyRows .key-row");
+  if (!rows.length) return;
+  layerKeys[0] = rows.map(row => getRowBinding(row));
+}
+
+function storeHoldKeys() {
+  let mask = 0;
+  const entries = [];
+  const seen = new Set();
+  $$("#holdRows .hold-row").forEach(row => {
+    const fn = Number(row.querySelector(".fn-select").value);
+    const target = Number(row.querySelector(".target-select").value);
+    if (Number.isNaN(fn) || fn < 0 || fn >= LT_CAPABLE) return;
+    if (Number.isNaN(target) || target < 0 || target >= controls.length) return;
+    const key = `${fn}:${target}`;
+    if (seen.has(key)) return; // same Fn+target only once
+    seen.add(key);
+    layerKeys[1 + fn][target] = getRowBinding(row);
+    mask |= (1 << fn);
+    entries.push({fn, target});
+  });
+  holdEntries = entries;
+  ltMask = mask;
+}
+
+function fnSelectHtml(selected) {
+  return controls.slice(0, LT_CAPABLE).map((name, i) =>
+    `<option value="${i}"${i === selected ? " selected" : ""}>${name}</option>`).join("");
+}
+
+/** Targets already used for this Fn (L1 map is per-Fn — same target OK on other Fn). */
+function usedTargetsForFn(fn, exceptIndex = -1) {
+  const used = new Set();
+  holdEntries.forEach((e, i) => {
+    if (i === exceptIndex) return;
+    if (e.fn === fn) used.add(e.target);
+  });
+  return used;
+}
+
+function targetSelectHtml(selected, disabledTargets = new Set()) {
+  return controls.map((name, i) => {
+    const disabled = disabledTargets.has(i) && i !== selected ? " disabled" : "";
+    return `<option value="${i}"${i === selected ? " selected" : ""}${disabled}>${name}</option>`;
+  }).join("");
+}
+
+function dedupeHoldEntries(entries) {
+  const seen = new Set();
+  const out = [];
+  for (const e of entries || []) {
+    const fn = Number(e.fn);
+    const target = Number(e.target);
+    if (Number.isNaN(fn) || fn < 0 || fn >= LT_CAPABLE) continue;
+    if (Number.isNaN(target) || target < 0 || target >= controls.length) continue;
+    const key = `${fn}:${target}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({fn, target});
+  }
+  return out;
+}
+
+function nextFreeHoldPair() {
+  for (let fn = 0; fn < LT_CAPABLE; fn++) {
+    const used = usedTargetsForFn(fn);
+    for (let target = 0; target < controls.length; target++) {
+      if (target === fn) continue;
+      if (!used.has(target)) return {fn, target};
+    }
+  }
+  return null;
+}
+
+function createTapRows() {
   const root = $("#keyRows");
   root.textContent = "";
   controls.forEach((name, i) => {
-    const key = keys?.[i] || DEFAULT_KEYS[i];
     const row = document.createElement("div");
     row.className = "key-row";
     row.innerHTML = `
       <span class="key-name">${name}</span>
       <button type="button" class="hotkey-field" aria-haspopup="dialog" aria-expanded="false"></button>
-      <button type="button" class="ghost record" aria-label="Record shortcut for ${name}">Record</button>
-      <button type="button" class="ghost clear-hotkey" aria-label="Reset shortcut for ${name}">Reset</button>`;
-    setRowBinding(row, key);
-    row.querySelector(".hotkey-field").addEventListener("click", () => {
-      if (recordTarget === row) return;
-      hotkeyPicker.open(row);
-    });
-    row.querySelector(".record").addEventListener("click", () => startRecord(row));
-    row.querySelector(".clear-hotkey").addEventListener("click", () => {
+      <button type="button" class="ghost record" aria-label="Record tap for ${name}">Record</button>
+      <button type="button" class="ghost clear-hotkey" aria-label="Reset tap for ${name}">Reset</button>`;
+    setRowBinding(row, layerKeys[0][i] || DEFAULT_KEYS[i]);
+    wireHotkeyRow(row, () => {
       stopRecord({keep: false});
       hotkeyPicker.close();
       setRowBinding(row, DEFAULT_KEYS[i]);
-      log(`Reset ${name}.`);
+      commitSettingsServer();
+      log(`Reset tap ${name}.`);
     });
     root.append(row);
   });
 }
 
-function readKeys() {
-  return $$(".key-row").map(row => getRowBinding(row));
+function createHoldRows() {
+  const root = $("#holdRows");
+  if (!root) return;
+  // Rebuild destroys row nodes — drop picker/record targets first or edits hit detached DOM.
+  if (hotkeyPicker.isOpen()) hotkeyPicker.close({commit: true});
+  if (recordTarget?.closest?.("#holdRows")) stopRecord({keep: false});
+  holdEntries = dedupeHoldEntries(holdEntries);
+  root.textContent = "";
+  holdEntries.forEach((entry, rowIndex) => {
+    const fn = entry.fn;
+    const target = entry.target;
+    const row = document.createElement("div");
+    row.className = "key-row hold-row";
+    row.innerHTML = `
+      <select class="fn-select" aria-label="Fn key">${fnSelectHtml(fn)}</select>
+      <select class="target-select" aria-label="Key while Fn held">${targetSelectHtml(target, usedTargetsForFn(fn, rowIndex))}</select>
+      <button type="button" class="hotkey-field" aria-haspopup="dialog" aria-expanded="false"></button>
+      <button type="button" class="ghost record" aria-label="Record hold action">Record</button>
+      <button type="button" class="ghost remove-hold" aria-label="Remove hold mapping">Remove</button>`;
+    setRowBinding(row, layerKeys[1 + fn][target] || DEFAULT_KEYS_FN[target]);
+    wireHotkeyRow(row, null);
+    row.querySelector(".fn-select").addEventListener("change", () => {
+      const nextFn = Number(row.querySelector(".fn-select").value);
+      const curTarget = Number(row.querySelector(".target-select").value);
+      if (usedTargetsForFn(nextFn, rowIndex).has(curTarget)) {
+        const free = controls.findIndex((_, t) => t !== nextFn && !usedTargetsForFn(nextFn, rowIndex).has(t));
+        if (free < 0) {
+          log(`No free target for Fn ${controls[nextFn]}.`);
+          row.querySelector(".fn-select").value = String(holdEntries[rowIndex].fn);
+          return;
+        }
+        row.querySelector(".target-select").value = String(free);
+        holdEntries[rowIndex] = {fn: nextFn, target: free};
+        setRowBinding(row, layerKeys[1 + nextFn][free] || DEFAULT_KEYS_FN[free]);
+      } else {
+        holdEntries[rowIndex] = {fn: nextFn, target: curTarget};
+        setRowBinding(row, layerKeys[1 + nextFn][curTarget] || DEFAULT_KEYS_FN[curTarget]);
+      }
+      storeHoldKeys();
+      createHoldRows();
+      commitSettingsServer();
+    });
+    row.querySelector(".target-select").addEventListener("change", () => {
+      const nextFn = Number(row.querySelector(".fn-select").value);
+      const prev = holdEntries[rowIndex];
+      const t = Number(row.querySelector(".target-select").value);
+      if (usedTargetsForFn(nextFn, rowIndex).has(t)) {
+        log(`Target ${controls[t]} already used for this Fn.`);
+        row.querySelector(".target-select").value = String(prev.target);
+        return;
+      }
+      holdEntries[rowIndex] = {fn: nextFn, target: t};
+      setRowBinding(row, layerKeys[1 + nextFn][t] || DEFAULT_KEYS_FN[t]);
+      storeHoldKeys();
+      createHoldRows();
+      commitSettingsServer();
+    });
+    row.querySelector(".remove-hold").addEventListener("click", () => {
+      stopRecord({keep: false});
+      hotkeyPicker.close();
+      storeHoldKeys();
+      holdEntries = holdEntries.filter((_, i) => i !== rowIndex);
+      createHoldRows();
+      commitSettingsServer();
+      log(`Removed hold: Fn ${controls[fn]} → ${controls[target]}.`);
+    });
+    root.append(row);
+  });
 }
+
+function renderKeymap() {
+  hotkeyPicker.close({commit: true});
+  stopRecord({keep: false});
+  createTapRows();
+  createHoldRows();
+}
+
+function createKeyRows() {
+  renderKeymap();
+}
+
+function addHoldRow() {
+  storeHoldKeys();
+  const pair = nextFreeHoldPair();
+  if (!pair) {
+    log("No free Fn/target pair left.");
+    return;
+  }
+  holdEntries.push(pair);
+  createHoldRows();
+  commitSettingsServer();
+  log(`Added hold: Fn ${controls[pair.fn]} → ${controls[pair.target]}.`);
+}
+
+function holdEntriesFromMask(mask) {
+  const entries = [];
+  for (let i = 0; i < LT_CAPABLE; i++) {
+    if (!(mask & (1 << i))) continue;
+    const target = i === 0 ? 1 : 0;
+    entries.push({fn: i, target});
+  }
+  return dedupeHoldEntries(entries);
+}
+
+function bindingEqual(a, b) {
+  return (a?.mod | 0) === (b?.mod | 0)
+    && (a?.type | 0) === (b?.type | 0)
+    && (a?.code | 0) === (b?.code | 0);
+}
+
+function layerEqual(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((key, i) => bindingEqual(key, b[i]));
+}
+
+/** Rebuild hold rows from device: per-Fn maps that differ from L0. */
+function holdEntriesFromDevice(mask, keysL0, keysFn) {
+  const entries = [];
+  for (let fn = 0; fn < LT_CAPABLE; fn++) {
+    if (!(mask & (1 << fn))) continue;
+    const fnMap = keysFn[fn] || keysFn[0] || DEFAULT_KEYS_FN;
+    let added = false;
+    for (let t = 0; t < controls.length; t++) {
+      if (!bindingEqual(fnMap[t], keysL0[t])) {
+        entries.push({fn, target: t});
+        added = true;
+      }
+    }
+    if (!added) entries.push({fn, target: fn === 0 ? 1 : 0});
+  }
+  return dedupeHoldEntries(entries);
+}
+
+function applyDeviceKeymap(config) {
+  layerKeys[0] = cloneKeys(config.keys_l0 || config.keys, DEFAULT_KEYS);
+  applyFnLayers(config.keys_fn, config.keys_l1);
+  ltMask = typeof config.lt_mask === "number" ? config.lt_mask & 0x0f : 0;
+  const keysFn = [1, 2, 3, 4].map(i => layerKeys[i]);
+  holdEntries = holdEntriesFromDevice(ltMask, layerKeys[0], keysFn);
+  if (Array.isArray(config.colors) && config.colors.length === 3) {
+    colors = config.colors.map(c => c.map(n => Math.max(0, Math.min(255, n | 0))));
+  }
+  if (Array.isArray(config.brightness) && config.brightness.length === 3) {
+    brightness = config.brightness.map(n => Math.max(0, Math.min(255, n | 0)));
+  }
+  if (Array.isArray(config.pulse) && config.pulse.length === 3) {
+    pulse = config.pulse.map(Boolean);
+  }
+}
+
+document.addEventListener("click", event => {
+  if (event.target.closest("#addHold")) addHoldRow();
+});
 
 async function refresh() {
   const status = $("#status");
@@ -526,14 +891,46 @@ async function refresh() {
     const info = await api("/api/status");
     status.className = `status ${info.connected ? "connected" : "offline"}`;
     status.lastElementChild.textContent = info.connected ? "Connected" : "Not connected";
-    if (info.connected) {
-      const config = await api("/api/config");
-      colors = config.colors;
-      brightness = config.brightness;
-      pulse = Array.isArray(config.pulse) ? config.pulse.map(Boolean) : [true, true, true];
-      createKeyRows(config.keys);
+
+    const settings = await api("/api/settings");
+    if (settings.exists && applySettingsSnapshot(settings)) {
+      renderKeymap();
       paintPreview();
-      log(`Device connected · protocol ${config.protocol}`);
+      log(`Settings from server · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
+      if (info.connected) {
+        try {
+          const config = await api("/api/config");
+          const deviceL0 = cloneKeys(config.keys_l0 || config.keys, DEFAULT_KEYS);
+          const deviceFn = Array.isArray(config.keys_fn) && config.keys_fn.length === 4
+            ? config.keys_fn.map(layer => cloneKeys(layer, DEFAULT_KEYS_FN))
+            : null;
+          const deviceMask = typeof config.lt_mask === "number" ? config.lt_mask & 0x0f : 0;
+          let diverged = !layerEqual(layerKeys[0], deviceL0) || (ltMask & 0x0f) !== deviceMask;
+          if (deviceFn) {
+            for (let fn = 0; fn < LT_CAPABLE; fn++) {
+              if (!layerEqual(layerKeys[1 + fn], deviceFn[fn])) diverged = true;
+            }
+          }
+          if (diverged) {
+            log(`Device connected · protocol ${config.protocol} · draft differs — Save to write EEPROM`);
+          } else {
+            log(`Device connected · protocol ${config.protocol}`);
+          }
+        } catch (e) {
+          log(`Device: ${e.message}`);
+        }
+      }
+    } else if (info.connected) {
+      const config = await api("/api/config");
+      applyDeviceKeymap(config);
+      renderKeymap();
+      paintPreview();
+      await persistSettingsServer();
+      log(`Device connected · protocol ${config.protocol} · seeded server settings`);
+    } else {
+      renderKeymap();
+      paintPreview();
+      log("Not connected · no server settings yet");
     }
   } catch (error) {
     status.className = "status offline";
@@ -544,6 +941,19 @@ async function refresh() {
     const fw = await api("/api/firmware");
     $("#firmwareInfo").textContent = `${fw.size} bytes · SHA-256 ${fw.sha256.slice(0,16)}…`;
   } catch (error) { $("#firmwareInfo").textContent = error.message; }
+}
+
+async function loadKeymapFromDevice() {
+  try {
+    const config = await api("/api/config");
+    applyDeviceKeymap(config);
+    renderKeymap();
+    paintPreview();
+    await persistSettingsServer();
+    log(`Loaded from device → server · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
+  } catch (e) {
+    log(`Load from device: ${e.message}`);
+  }
 }
 
 const colorPicker = (() => {
@@ -789,11 +1199,64 @@ $("#lightsOff").addEventListener("click", () => {
   colorPicker.syncFromState();
   queueRgb();
 });
-$("#saveConfig").addEventListener("click", async () => { try { await post("/api/keymap", {keys:readKeys()}); await sendRgb(); await post("/api/save"); log("Configuration saved to EEPROM."); } catch(e) { log(`Save: ${e.message}`); } });
-$("#buildFirmware").addEventListener("click", async event => { const b=event.currentTarget;b.disabled=true;log("Building firmware…");try{const r=await post("/api/build");$("#firmwareInfo").textContent=`${r.firmware.size} bytes · SHA-256 ${r.firmware.sha256.slice(0,16)}…`;log(r.log.trim());}catch(e){log(`Build failed: ${e.message}`);}finally{b.disabled=false;} });
+$("#saveConfig").addEventListener("click", async () => {
+  try {
+    storeTapKeys();
+    storeHoldKeys();
+    const savedHolds = holdEntries.map(e => ({fn: e.fn, target: e.target}));
+    const snapshot = settingsSnapshot();
+    const tapCodes = snapshot.keys_l0.map(k => k.code);
+    if (tapCodes.every(c => c === 0)) {
+      log("Save aborted: tap keymap empty (all codes 0). Set keys, then Save.");
+      return;
+    }
+    log(`Saving… L0 [${snapshot.keys_l0.map(k => k.code).join(", ")}] LT ${snapshot.lt_mask}`);
+    await post("/api/settings", snapshot);
+    await post("/api/keymap", {keys: snapshot.keys_l0, layer: 0, lt_mask: snapshot.lt_mask});
+    for (let fn = 0; fn < LT_CAPABLE; fn++) {
+      await post("/api/keymap", {keys: snapshot.keys_fn[fn], layer: 1 + fn});
+    }
+    await sendRgb();
+    await post("/api/save", snapshot);
+    const verify = await api("/api/config");
+    const v0 = cloneKeys(verify.keys_l0 || verify.keys, DEFAULT_KEYS);
+    const vMask = typeof verify.lt_mask === "number" ? verify.lt_mask & 0x0f : snapshot.lt_mask;
+    applyFnLayers(verify.keys_fn, verify.keys_l1);
+    let mismatch = !layerEqual(v0, snapshot.keys_l0) || vMask !== snapshot.lt_mask;
+    if (Array.isArray(verify.keys_fn)) {
+      for (let fn = 0; fn < LT_CAPABLE; fn++) {
+        if (!layerEqual(layerKeys[1 + fn], snapshot.keys_fn[fn])) mismatch = true;
+      }
+    }
+    if (mismatch) {
+      log(`Save verify mismatch — device L0 [${v0.map(k => k.code).join(", ")}] LT ${vMask}`);
+      // Keep what we wrote; don't let a bad/old-firmware read wipe mods or bleed Fn layers in UI.
+      layerKeys[0] = cloneKeys(snapshot.keys_l0, DEFAULT_KEYS);
+      applyFnLayers(snapshot.keys_fn, snapshot.keys_l1);
+      ltMask = snapshot.lt_mask & 0x0f;
+    } else {
+      layerKeys[0] = v0;
+      ltMask = vMask;
+    }
+    holdEntries = dedupeHoldEntries(savedHolds);
+    if (!holdEntries.length && ltMask) {
+      holdEntries = holdEntriesFromDevice(ltMask, layerKeys[0], [1, 2, 3, 4].map(i => layerKeys[i]));
+    }
+    renderKeymap();
+    await persistSettingsServer();
+    log(`Saved OK · server + device · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
+  } catch (e) { log(`Save: ${e.message}`); }
+});
+function openFirmwareCard() {
+  const card = document.querySelector(".firmware-card");
+  if (card) card.open = true;
+}
+
+$("#loadDeviceKeymap")?.addEventListener("click", () => loadKeymapFromDevice());
+$("#buildFirmware").addEventListener("click", async event => { openFirmwareCard(); const b=event.currentTarget;b.disabled=true;log("Building firmware…");try{const r=await post("/api/build");$("#firmwareInfo").textContent=`${r.firmware.size} bytes · SHA-256 ${r.firmware.sha256.slice(0,16)}…`;log(r.log.trim());}catch(e){log(`Build failed: ${e.message}`);}finally{b.disabled=false;} });
 $("#firmwareFile").addEventListener("change", async event => { const file=event.target.files[0];if(!file)return;try{const r=await api("/api/firmware/upload",{method:"POST",headers:{"Content-Type":"application/octet-stream","X-Macropad-Client":"1"},body:await file.arrayBuffer()});uploaded=true;$("#uploadInfo").textContent=`${file.name} · ${r.size} bytes · ${r.sha256.slice(0,12)}…`;log("External firmware validated.");}catch(e){uploaded=false;log(`Upload: ${e.message}`);} });
-$("#flashFirmware").addEventListener("click", () => $("#flashDialog").showModal());
-$("#confirmFlash").addEventListener("click", async event => { event.preventDefault();$("#flashDialog").close();log("Flash started: do not unplug USB…");try{const r=await post("/api/flash",{confirm:true,uploaded,enter_bootloader:true});log(r.log.trim());log("Flash and verify completed.");setTimeout(refresh,1500);}catch(e){log(`Flash failed: ${e.message}`);} });
+$("#flashFirmware").addEventListener("click", () => { openFirmwareCard(); $("#flashDialog").showModal(); });
+$("#confirmFlash").addEventListener("click", async event => { event.preventDefault();$("#flashDialog").close();openFirmwareCard();log("Flash started: do not unplug USB…");try{const r=await post("/api/flash",{confirm:true,uploaded,enter_bootloader:true});log(r.log.trim());log("Flash and verify completed.");setTimeout(refresh,1500);}catch(e){log(`Flash failed: ${e.message}`);} });
 $("#clearLog").addEventListener("click", () => $("#log").textContent="Log cleared.");
 
 (function initTheme() {

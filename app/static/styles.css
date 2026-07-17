@@ -75,9 +75,6 @@
   --danger-zone-border: rgba(255, 69, 58, 0.4);
   --pulse-on: rgba(48, 209, 88, 0.18);
   --pulse-on-border: rgba(48, 209, 88, 0.45);
-  --step-bg: rgba(48, 209, 88, 0.16);
-  --warn-step-bg: rgba(255, 69, 58, 0.16);
-  --warn-step: #ff6961;
   --swatch-ring: rgba(255, 255, 255, 0.22);
   --led-ring: rgba(255, 255, 255, 0.28);
 
@@ -130,9 +127,6 @@
   --danger-zone-border: rgba(255, 59, 48, 0.28);
   --pulse-on: rgba(52, 199, 89, 0.14);
   --pulse-on-border: rgba(52, 199, 89, 0.42);
-  --step-bg: rgba(52, 199, 89, 0.12);
-  --warn-step-bg: rgba(255, 59, 48, 0.1);
-  --warn-step: #d70015;
   --swatch-ring: rgba(60, 60, 67, 0.22);
   --led-ring: rgba(60, 60, 67, 0.3);
 
@@ -461,25 +455,6 @@ main {
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.02em;
-}
-
-.step {
-  display: inline-grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  margin-right: 10px;
-  border-radius: 8px;
-  background: var(--step-bg);
-  color: var(--green);
-  font: 650 10px/1 ui-monospace, "SF Mono", monospace;
-  border: var(--hairline) solid color-mix(in srgb, var(--green) 35%, transparent);
-}
-
-.warning-step {
-  background: var(--warn-step-bg);
-  color: var(--warn-step);
-  border-color: color-mix(in srgb, var(--red) 35%, transparent);
 }
 
 /* --- Buttons ----------------------------------------------------------------- */
@@ -1100,6 +1075,16 @@ input[type="range"] {
   margin: 10px 0 0;
 }
 
+.hold-rows {
+  margin-top: 8px;
+}
+
+.hold-rows:not(:empty) {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: var(--hairline) solid var(--glass-stroke-soft);
+}
+
 .key-rows {
   display: grid;
   gap: 8px;
@@ -1117,6 +1102,10 @@ input[type="range"] {
   transition:
     background var(--dur) var(--ease),
     border-color var(--dur) var(--ease);
+}
+
+.key-row.hold-row {
+  grid-template-columns: minmax(110px, 0.9fr) minmax(110px, 0.9fr) minmax(0, 1.4fr) auto auto;
 }
 
 .key-row:hover {
@@ -1184,8 +1173,27 @@ input[type="range"] {
   font-weight: 500;
 }
 
+.key-row .fn-select,
+.key-row .target-select {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: var(--input);
+  border: var(--hairline) solid var(--glass-stroke-soft);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.key-row .fn-select:hover,
+.key-row .target-select:hover {
+  border-color: var(--glass-stroke);
+}
+
 .key-row .record,
-.key-row .clear-hotkey {
+.key-row .clear-hotkey,
+.key-row .remove-hold {
   padding: 7px 10px;
   font-size: 12px;
   white-space: nowrap;
@@ -1370,12 +1378,58 @@ input[type="range"] {
   padding-top: 16px;
   position: relative;
   justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.save-row #loadDeviceKeymap {
+  margin-right: auto;
 }
 
 .firmware-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
+  position: relative;
+}
+
+.firmware-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 0;
+}
+
+.firmware-summary::-webkit-details-marker {
+  display: none;
+}
+
+.firmware-card[open] > .firmware-summary {
+  margin-bottom: 18px;
+}
+
+.collapse-chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted);
+  transition:
+    transform var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.firmware-summary:hover .collapse-chevron {
+  color: var(--text);
+  background: var(--glass);
+}
+
+.firmware-card[open] > .firmware-summary .collapse-chevron {
+  transform: rotate(180deg);
+}
+
+.firmware-body {
   position: relative;
 }
 
@@ -1435,12 +1489,44 @@ input[type="file"]:hover {
   margin: 4px 0 0;
 }
 
-.console-card pre {
+.log-panel {
+  position: relative;
+  margin-top: 20px;
+}
+
+.log-clear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: var(--hairline) solid rgba(48, 209, 88, 0.28);
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--console-text);
+  font: 650 11px/1 ui-monospace, "SF Mono", "SFMono-Regular", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  transition:
+    opacity var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.log-clear:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(48, 209, 88, 0.5);
+}
+
+.firmware-card #log {
   margin: 0;
   min-height: 125px;
   max-height: 280px;
   overflow: auto;
   padding: 16px;
+  padding-right: 72px;
   background: var(--console);
   border: var(--hairline) solid var(--glass-stroke-soft);
   border-radius: 16px;
@@ -1522,8 +1608,14 @@ button:disabled {
   }
 
   .key-name,
+  .key-row .fn-select,
+  .key-row .target-select,
   .hotkey-field {
     grid-column: 1 / -1;
+  }
+
+  .key-row.hold-row {
+    grid-template-columns: 1fr 1fr;
   }
 
   .save-row,

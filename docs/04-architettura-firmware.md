@@ -51,7 +51,7 @@ Endpoint 1 carries keyboard/media reports. Endpoint 2 is bidirectional and carri
 | 0–1 | signature `0x4D 0x50` (`MP`) |
 | 2 | version `2` |
 | 3 | XOR checksum |
-| 4–21 | six `[mod, type, code]` records |
+| 4–21 | six `[mod, type, code]` records (`type`: 0=keyboard, 1=consumer, 2=mouse) |
 | 22–30 | three colors `[R,G,B]` |
 | 31–33 | brightness for LED 1, 2 and 3 |
 

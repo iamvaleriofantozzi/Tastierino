@@ -40,7 +40,7 @@
     </header>
     <main>
       <section class="card lighting">
-        <div class="section-title"><div><span class="step">01</span><h2>Lighting</h2></div><button id="lightsOff" class="ghost">Turn all off</button></div>
+        <div class="section-title"><div><h2>Lighting</h2></div><button id="lightsOff" class="ghost">Turn all off</button></div>
         <div class="light-rows" aria-label="Per-control lighting">
           <div class="light-row" data-led="0">
             <div class="light-swatch key-preview">
@@ -81,22 +81,32 @@
         </div>
       </section>
       <section class="card keymap">
-        <div class="section-title"><div><span class="step">02</span><h2>Keymap</h2></div></div>
+        <div class="section-title"><div><h2>Keymap</h2></div></div>
         <div id="keyRows" class="key-rows"></div>
-        <div class="save-row"><button id="saveConfig" class="primary">Save to memory</button></div>
-      </section>
-      <section class="card firmware-card">
-        <div class="section-title"><div><span class="step warning-step">03</span><h2>Firmware</h2></div></div>
-        <div class="firmware-grid">
-          <div><p class="label">Project firmware</p><p id="firmwareInfo" class="mono">Loading…</p><button id="buildFirmware" class="secondary">Build firmware</button></div>
-          <div><label class="label" for="firmwareFile">Or .bin file</label><input id="firmwareFile" type="file" accept=".bin,application/octet-stream"><p id="uploadInfo" class="mono muted">No file selected</p></div>
+        <div id="holdRows" class="key-rows hold-rows"></div>
+        <div class="save-row">
+          <button type="button" id="addHold" class="secondary">Add</button>
+          <button type="button" id="loadDeviceKeymap" class="ghost">Load from device</button>
+          <button type="button" id="saveConfig" class="primary">Save to memory</button>
         </div>
-        <div class="danger-zone"><div><strong>Write firmware</strong><p>The device will reboot. Do not unplug during verify.</p></div><button id="flashFirmware" class="danger">Start flash…</button></div>
       </section>
-      <section class="card console-card">
-        <div class="section-title"><div><span class="step">04</span><h2>Log</h2></div><button id="clearLog" class="ghost">Clear</button></div>
-        <pre id="log" aria-live="polite">Control Center ready.</pre>
-      </section>
+      <details class="card firmware-card">
+        <summary class="section-title firmware-summary">
+          <div><h2>Firmware</h2></div>
+          <span class="collapse-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+        </summary>
+        <div class="firmware-body">
+          <div class="firmware-grid">
+            <div><p class="label">Project firmware</p><p id="firmwareInfo" class="mono">Loading…</p><button id="buildFirmware" class="secondary">Build firmware</button></div>
+            <div><label class="label" for="firmwareFile">Or .bin file</label><input id="firmwareFile" type="file" accept=".bin,application/octet-stream"><p id="uploadInfo" class="mono muted">No file selected</p></div>
+          </div>
+          <div class="danger-zone"><div><strong>Write firmware</strong><p>The device will reboot. Do not unplug during verify.</p></div><button id="flashFirmware" class="danger">Start flash…</button></div>
+          <div class="log-panel">
+            <button type="button" id="clearLog" class="log-clear" aria-label="Clear log">Clear</button>
+            <pre id="log" aria-live="polite">Control Center ready.</pre>
+          </div>
+        </div>
+      </details>
     </main>
   </div>
   <dialog id="flashDialog"><form method="dialog"><p class="eyebrow danger-text">SENSITIVE OPERATION</p><h2>Confirm flash?</h2><p>The selected firmware will be written and verified. Do not unplug the USB cable until the log shows completion.</p><div class="dialog-actions"><button value="cancel" class="ghost">Cancel</button><button id="confirmFlash" value="default" class="danger">Write and verify</button></div></form></dialog>

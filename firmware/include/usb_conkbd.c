@@ -8,6 +8,7 @@
 
 #define KBD_sendReport() HID_sendReport(KBD_report, sizeof(KBD_report))
 #define CON_sendReport() HID_sendReport(CON_report, sizeof(CON_report))
+#define MOUSE_sendReport() HID_sendReport(MOUSE_report, sizeof(MOUSE_report))
 
 // ===================================================================================
 // Keyboard HID report
@@ -16,6 +17,9 @@ __xdata uint8_t KBD_report[9] = {
     USB_SEND_REPORT_KEYBOARD_PAGE_ID, 0, 0, 0, 0, 0, 0, 0, 0};
 __xdata uint8_t CON_report[9] = {
     USB_SEND_REPORT_CONSUMER_PAGE_ID, 0, 0, 0, 0, 0, 0, 0, 0};
+// reportId, buttons, x, y, wheel
+__xdata uint8_t MOUSE_report[5] = {
+    USB_SEND_REPORT_MOUSE_PAGE_ID, 0, 0, 0, 0};
 
 // ===================================================================================
 // ASCII to keycode mapping table
@@ -234,6 +238,55 @@ void CON_releaseAll(void) {
   for (i = 8; i; i--)
     CON_report[i] = 0; // delete all keys in report
   CON_sendReport();    // send report
+}
+
+// ===================================================================================
+// Mouse helpers — code: button mask (0x01/02/04) or wheel (0x10 up / 0x11 down)
+// ===================================================================================
+void MOUSE_press(uint8_t code) {
+  if (code == MOUSE_WHL_UP || code == MOUSE_WHL_DOWN) {
+    MOUSE_report[1] = 0;
+    MOUSE_report[2] = 0;
+    MOUSE_report[3] = 0;
+    MOUSE_report[4] = (code == MOUSE_WHL_UP) ? 1 : 0xff; // -1 as uint8
+    MOUSE_sendReport();
+    return;
+  }
+  if (code & 0x07) {
+    MOUSE_report[1] |= (code & 0x07);
+    MOUSE_report[2] = 0;
+    MOUSE_report[3] = 0;
+    MOUSE_report[4] = 0;
+    MOUSE_sendReport();
+  }
+}
+
+void MOUSE_release(uint8_t code) {
+  if (code == MOUSE_WHL_UP || code == MOUSE_WHL_DOWN) {
+    MOUSE_report[4] = 0;
+    MOUSE_sendReport();
+    return;
+  }
+  if (code & 0x07) {
+    MOUSE_report[1] &= (uint8_t) ~(code & 0x07);
+    MOUSE_report[2] = 0;
+    MOUSE_report[3] = 0;
+    MOUSE_report[4] = 0;
+    MOUSE_sendReport();
+  }
+}
+
+void MOUSE_type(uint8_t code) {
+  MOUSE_press(code);
+  MOUSE_release(code);
+}
+
+void MOUSE_releaseAll(void) {
+  MOUSE_report[1] = 0;
+  MOUSE_report[2] = 0;
+  MOUSE_report[3] = 0;
+  MOUSE_report[4] = 0;
+  MOUSE_sendReport();
 }
 
 // ===================================================================================

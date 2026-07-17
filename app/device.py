@@ -75,17 +75,50 @@ class MacroPad:
             raise DeviceError(f"Firmware rejected command (status {response[1]})")
         return response
 
-    def get_config(self):
-        r = self.exchange(protocol.GET_CONFIG)
+    @staticmethod
+    def _parse_keys(packet, offset, names=True):
         keys = []
         for i, name in enumerate(protocol.CONTROL_NAMES):
-            offset = 4 + i * 3
-            keys.append({"name": name, "mod": r[offset], "type": r[offset + 1], "code": r[offset + 2]})
+            base = offset + i * 3
+            item = {"mod": packet[base], "type": packet[base + 1], "code": packet[base + 2]}
+            if names:
+                item["name"] = name
+            keys.append(item)
+        return keys
+
+    def get_keymap(self, layer=0):
+        if layer not in range(protocol.LAYER_COUNT):
+            raise DeviceError("Invalid keymap layer")
+        r = self.exchange(protocol.GET_KEYMAP, bytes([layer]))
+        return self._parse_keys(r, 3)
+
+    def get_config(self):
+        r = self.exchange(protocol.GET_CONFIG)
+        keys = self._parse_keys(r, 4)
         lighting = self.get_lighting()
+        protocol_version = r[2]
+        lt_mask = r[3] & 0x0F
+        keys_fn = []
+        if protocol_version >= 3:
+            for fn in range(protocol.LT_CAPABLE):
+                try:
+                    keys_fn.append(self.get_keymap(1 + fn))
+                except DeviceError:
+                    keys_fn.append([dict(k) for k in keys])
+        else:
+            try:
+                shared = self.get_keymap(1) if protocol_version >= 2 else [dict(k) for k in keys]
+            except DeviceError:
+                shared = [dict(k) for k in keys]
+            keys_fn = [[dict(k) for k in shared] for _ in range(protocol.LT_CAPABLE)]
         return {
-            "protocol": r[2],
+            "protocol": protocol_version,
             "brightness": lighting["brightness"],
             "keys": keys,
+            "keys_l0": keys,
+            "keys_l1": keys_fn[0],
+            "keys_fn": keys_fn,
+            "lt_mask": lt_mask,
             "colors": lighting["colors"],
             "pulse": lighting["pulse"],
         }
@@ -118,9 +151,20 @@ class MacroPad:
         mask = sum((1 << i) for i, flag in enumerate(enabled) if flag)
         self.exchange(protocol.SET_PULSE, bytes([mask]))
 
-    def set_keymap(self, keys):
-        payload = bytes(value for key in keys for value in (key["mod"], key["type"], key["code"]))
+    def set_keymap(self, keys, layer=0):
+        if layer not in range(protocol.LAYER_COUNT):
+            raise DeviceError("Invalid keymap layer")
+        if len(keys) != 6:
+            raise DeviceError("Six mappings required")
+        payload = bytes([layer]) + bytes(
+            value for key in keys for value in (key["mod"], key["type"], key["code"])
+        )
         self.exchange(protocol.SET_KEYMAP, payload)
+
+    def set_lt_mask(self, mask):
+        if not isinstance(mask, int) or not 0 <= mask <= 0x0F:
+            raise DeviceError("Invalid LT mask")
+        self.exchange(protocol.SET_LT_MASK, bytes([mask & 0x0F]))
 
     def save(self):
         self.exchange(protocol.SAVE_CONFIG)

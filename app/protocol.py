@@ -12,6 +12,10 @@ ENTER_BOOTLOADER = 0x06
 PING = 0x07
 GET_LIGHTING = 0x08
 SET_PULSE = 0x09
+GET_KEYMAP = 0x0A
+SET_LT_MASK = 0x0B
 RESPONSE = 0x80
 
 CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")
+LT_CAPABLE = 4  # first four controls support long-press Fn
+LAYER_COUNT = 5  # 0 = tap, 1..4 = Fn key 0..3

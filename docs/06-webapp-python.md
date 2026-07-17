@@ -19,8 +19,10 @@ The webapp exposes control of the keypad on `http://127.0.0.1:8765/`. The server
 | GET | `/api/config` | keymap, colors and brightness |
 | GET | `/api/firmware` | binary size and SHA-256 |
 | POST | `/api/rgb` | live colors and brightness |
+| GET | `/api/settings` | Shared server settings (all browsers) |
+| POST | `/api/settings` | Persist settings to `app/data/settings.json` |
 | POST | `/api/keymap` | live keymap |
-| POST | `/api/save` | persistence to Data Flash |
+| POST | `/api/save` | device EEPROM (+ optional settings body) |
 | POST | `/api/build` | `make clean all` |
 | POST | `/api/firmware/upload` | validates an external binary |
 | POST | `/api/bootloader` | software jump to bootloader |
@@ -34,6 +36,6 @@ All POST requests must include `X-Macropad-Client: 1`. This is a minimal safegua
 ./start.command
 ```
 
-Moving a slider or picking a color changes the firmware's RAM. "Save to memory" sends the current keymap and lighting, then `SAVE_CONFIG`; only then does the configuration survive a reset.
+Moving a slider or picking a color changes the firmware RAM and auto-saves shared settings to `app/data/settings.json` (same view in every browser on this Mac). **Save to memory** also writes the device EEPROM so the pad keeps the config after unplug.
 
 Flashing requires explicit confirmation. The server also checks that the file is not empty and does not exceed `0x3800` bytes, but it cannot semantically prove that an external binary is intended for this board.

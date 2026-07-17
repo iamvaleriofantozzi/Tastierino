@@ -23,6 +23,18 @@ void CON_release(uint16_t key);       // release a consumer key on keyboard
 void CON_type(uint16_t key);          // press and release a consumer key
 void CON_releaseAll(void);            // release all consumer keys on keyboard
 
+void MOUSE_press(uint8_t code);       // mouse button down / scroll notch
+void MOUSE_release(uint8_t code);     // mouse button up
+void MOUSE_type(uint8_t code);        // click or one scroll notch
+void MOUSE_releaseAll(void);
+
+// Mouse binding codes (type = MOUSE / 2)
+#define MOUSE_BTN_LEFT      0x01
+#define MOUSE_BTN_RIGHT     0x02
+#define MOUSE_BTN_MIDDLE    0x04
+#define MOUSE_WHL_UP        0x10
+#define MOUSE_WHL_DOWN      0x11
+
 uint8_t KBD_getState(void);           // get keyboard status LEDs
 
 // Keyboard LED states

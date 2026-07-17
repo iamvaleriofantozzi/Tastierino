@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from .device import DeviceError, MacroPad
 from . import firmware
+from . import settings_store
 
 STATIC = Path(__file__).with_name("static")
 DEVICE = MacroPad()
@@ -40,6 +41,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/config":
                 self.send_json(200, DEVICE.get_config())
+                return
+            if path == "/api/settings":
+                self.send_json(200, settings_store.load())
                 return
             if path == "/api/firmware":
                 self.send_json(200, firmware.inspect_binary(firmware.DEFAULT_BIN))
@@ -86,14 +90,35 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/keymap":
                 data = self.read_json()
                 keys = data["keys"]
+                layer = int(data.get("layer", 0))
+                if layer not in range(5):
+                    raise ValueError("Invalid layer")
                 if len(keys) != 6:
                     raise ValueError("Six mappings required")
                 for key in keys:
-                    if key["type"] not in (0, 1) or any(not 0 <= int(key[x]) <= 255 for x in ("mod", "code")):
+                    if key["type"] not in (0, 1, 2) or any(not 0 <= int(key[x]) <= 255 for x in ("mod", "code")):
                         raise ValueError("Invalid mapping")
-                DEVICE.set_keymap(keys)
+                DEVICE.set_keymap(keys, layer=layer)
+                if "lt_mask" in data:
+                    mask = int(data["lt_mask"])
+                    if not 0 <= mask <= 0x0F:
+                        raise ValueError("Invalid LT mask")
+                    DEVICE.set_lt_mask(mask)
                 self.send_json(200, {"ok": True})
+            elif path == "/api/lt-mask":
+                data = self.read_json()
+                mask = int(data["lt_mask"])
+                if not 0 <= mask <= 0x0F:
+                    raise ValueError("Invalid LT mask")
+                DEVICE.set_lt_mask(mask)
+                self.send_json(200, {"ok": True})
+            elif path == "/api/settings":
+                saved = settings_store.save(self.read_json())
+                self.send_json(200, saved)
             elif path == "/api/save":
+                data = self.read_json()
+                if data.get("keys_l0") or data.get("keys"):
+                    settings_store.save(data)
                 DEVICE.save()
                 self.send_json(200, {"ok": True})
             elif path == "/api/build":
