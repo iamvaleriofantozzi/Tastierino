@@ -33,7 +33,6 @@
 #define LIGHT_RQT_PULSE_LED      2
 #define LIGHT_RQT_SET_PULSE      3
 #define LIGHT_RQT_SET_AUTO_OFF   4
-#define LIGHT_RQT_SET_CPULSE     5
 
 struct RGBColor {
   uint8_t r;
@@ -45,6 +44,8 @@ extern struct RGBColor colors[LED_COUNT];
 extern uint8_t brightness[LED_COUNT];
 extern uint8_t pulse_en;
 extern uint8_t cpulse_en;
+extern uint16_t cpulse_period_ms[LED_COUNT];
+extern uint8_t cpulse_min_divisor[LED_COUNT];
 extern uint8_t auto_off_en;
 extern uint8_t auto_off_index;
 
@@ -55,6 +56,8 @@ void light_rqt_u8_u8(uint8_t rqt, uint8_t src, uint8_t a, uint8_t b);
 void light_set_rgb_led(uint8_t led, uint8_t r, uint8_t g, uint8_t b);
 void light_set_brightness_led(uint8_t led, uint8_t bri);
 void light_set_brightness_all(uint8_t bri);
+void light_set_cpulse_led(uint8_t led, uint8_t en, uint16_t period_ms,
+                         uint8_t min_divisor);
 void light_tick(void);
 
 uint8_t auto_off_index_from_sec(uint16_t sec);

@@ -139,6 +139,9 @@ class MacroPad:
             "pulse": lighting["pulse"],
             "auto_off_enabled": lighting["auto_off_enabled"],
             "auto_off_steps": lighting["auto_off_steps"],
+            "cpulse": lighting["cpulse"],
+            "cpulse_period": lighting["cpulse_period"],
+            "cpulse_divisor": lighting["cpulse_divisor"],
             "macro_steps": protocol.MACRO_STEPS if protocol_version >= 4 else 1,
         }
 
@@ -198,6 +201,10 @@ class MacroPad:
         if auto_off_steps > protocol.AUTO_OFF_MAX_INDEX:
             auto_off_steps = protocol.AUTO_OFF_MAX_INDEX
         cpulse_raw = r[17] & 0x07 if len(r) > 17 else 0
+        cpulse_period = [
+            r[18 + i * 2] | (r[19 + i * 2] << 8) for i in range(3)
+        ]
+        cpulse_divisor = [r[24 + i] for i in range(3)]
         return {
             "brightness": [r[2], r[3], r[4]],
             "colors": colors,
@@ -205,6 +212,8 @@ class MacroPad:
             "auto_off_enabled": auto_off_enabled,
             "auto_off_steps": auto_off_steps,
             "cpulse": [bool(cpulse_raw & (1 << i)) for i in range(3)],
+            "cpulse_period": cpulse_period,
+            "cpulse_divisor": cpulse_divisor,
         }
 
     def set_rgb(self, colors):
@@ -248,7 +257,35 @@ class MacroPad:
     def set_continuous_pulse(self, mask):
         if not isinstance(mask, int) or not 0 <= mask <= 0x07:
             raise DeviceError("Invalid cpulse mask")
-        self.exchange(protocol.SET_CPULSE, bytes([mask & 0x07]))
+        lighting = self.get_lighting()
+        for led in range(3):
+            self.set_continuous_pulse_led(
+                led,
+                bool(mask & (1 << led)),
+                lighting["cpulse_period"][led],
+                lighting["cpulse_divisor"][led],
+            )
+
+    def set_continuous_pulse_led(self, led, enabled, period_ms, min_divisor):
+        led = int(led)
+        period_ms = int(period_ms)
+        min_divisor = int(min_divisor)
+        if led not in range(3):
+            raise DeviceError("Invalid LED index")
+        if not isinstance(enabled, bool):
+            raise DeviceError("Invalid cpulse enabled flag")
+        if not 500 <= period_ms <= 3000:
+            raise DeviceError("Invalid cpulse period")
+        if not 2 <= min_divisor <= 255:
+            raise DeviceError("Invalid cpulse divisor")
+        payload = bytes([
+            led,
+            1 if enabled else 0,
+            period_ms & 0xFF,
+            (period_ms >> 8) & 0xFF,
+            min_divisor,
+        ])
+        self.exchange(protocol.SET_CPULSE_LED, payload)
 
     def set_lt_mask(self, mask):
         if not isinstance(mask, int) or not 0 <= mask <= 0x0F:

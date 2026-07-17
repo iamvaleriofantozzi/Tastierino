@@ -113,11 +113,21 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Invalid auto-off timeout")
                     DEVICE.set_auto_off(enabled, steps)
                 if data.get("apply_cpulse"):
-                    cpulse = data["cpulse"]
-                    if len(cpulse) != 3 or any(not isinstance(flag, bool) for flag in cpulse):
-                        raise ValueError("Invalid cpulse flags")
-                    DEVICE.set_continuous_pulse(
-                        sum((1 << i) for i, flag in enumerate(cpulse) if flag)
+                    cpulse_led = int(data["cpulse_led"])
+                    cpulse_enabled = data["cpulse_enabled"]
+                    cpulse_period = int(data["cpulse_period"])
+                    cpulse_divisor = int(data["cpulse_divisor"])
+                    if cpulse_led not in range(3):
+                        raise ValueError("Invalid cpulse LED")
+                    if not isinstance(cpulse_enabled, bool):
+                        raise ValueError("Invalid cpulse enabled flag")
+                    if not 500 <= cpulse_period <= 3000:
+                        raise ValueError("Invalid cpulse period")
+                    if not 2 <= cpulse_divisor <= 255:
+                        raise ValueError("Invalid cpulse divisor")
+                    DEVICE.set_continuous_pulse_led(
+                        cpulse_led, cpulse_enabled, cpulse_period,
+                        cpulse_divisor,
                     )
                 self.send_json(200, {"ok": True})
             elif path == "/api/keymap":

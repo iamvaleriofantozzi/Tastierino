@@ -8,6 +8,8 @@ let colors = [[0,80,255],[0,255,80],[255,20,0]];
 let brightness = [160,160,160];
 let pulse = [true, true, true];
 let cpulse = [false, false, false]; // continuous pulse (pulse curve loops until toggled off)
+let cpulsePeriod = [500, 500, 500];
+let cpulseDivisor = [20, 20, 20];
 let lastColorsBeforeOff = null;
 let autoOffEnabled = false;
 let autoOffSteps = 9; // index into AUTO_OFF_SECONDS → 60s
@@ -161,6 +163,12 @@ function paintPreview() {
     btn.classList.toggle("is-on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
+  $$("[data-cpulse-period]").forEach((input, i) => {
+    input.value = cpulsePeriod[i];
+  });
+  $$("[data-cpulse-divisor]").forEach((input, i) => {
+    input.value = cpulseDivisor[i];
+  });
   syncLightsToggle();
   paintAutoOff();
 }
@@ -221,7 +229,11 @@ async function sendRgb(opts = {}) {
       body.apply_auto_off = true;
     }
     if (opts.applyCpulse) {
-      body.cpulse = cpulse;
+      const led = opts.cpulseLed;
+      body.cpulse_led = led;
+      body.cpulse_enabled = !!cpulse[led];
+      body.cpulse_period = cpulsePeriod[led] | 0;
+      body.cpulse_divisor = cpulseDivisor[led] | 0;
       body.apply_cpulse = true;
     }
     if (!Object.keys(body).length) return;
@@ -769,6 +781,8 @@ function settingsSnapshot() {
     auto_off_enabled: !!autoOffEnabled,
     auto_off_steps: autoOffSteps | 0,
     cpulse: cpulse.map(Boolean),
+    cpulse_period: cpulsePeriod.map(n => n | 0),
+    cpulse_divisor: cpulseDivisor.map(n => n | 0),
   };
 }
 
@@ -809,6 +823,12 @@ function applySettingsSnapshot(data) {
   }
   if (Array.isArray(data.cpulse) && data.cpulse.length === 3) {
     cpulse = data.cpulse.map(Boolean);
+  }
+  if (Array.isArray(data.cpulse_period) && data.cpulse_period.length === 3) {
+    cpulsePeriod = data.cpulse_period.map(n => Math.max(500, Math.min(3000, n | 0)));
+  }
+  if (Array.isArray(data.cpulse_divisor) && data.cpulse_divisor.length === 3) {
+    cpulseDivisor = data.cpulse_divisor.map(n => Math.max(2, Math.min(255, n | 0)));
   }
   return !keysEmpty(layerKeys[0]);
 }
@@ -1144,7 +1164,7 @@ function holdEntriesFromDevice(mask, keysL0, keysFn) {
 }
 
 /** Lighting state: device is source of truth (it owns colors/brightness + fades). */
-function applyDeviceLighting(config) {
+function applyDeviceLighting(config, preserveInactiveCpulse = false) {
   if (Array.isArray(config.colors) && config.colors.length === 3) {
     colors = config.colors.map(c => c.map(n => Math.max(0, Math.min(255, n | 0))));
   }
@@ -1162,6 +1182,18 @@ function applyDeviceLighting(config) {
   }
   if (Array.isArray(config.cpulse) && config.cpulse.length === 3) {
     cpulse = config.cpulse.map(Boolean);
+  }
+  if (Array.isArray(config.cpulse_period) && config.cpulse_period.length === 3) {
+    config.cpulse_period.forEach((n, i) => {
+      if (!preserveInactiveCpulse || cpulse[i])
+        cpulsePeriod[i] = Math.max(500, Math.min(3000, n | 0));
+    });
+  }
+  if (Array.isArray(config.cpulse_divisor) && config.cpulse_divisor.length === 3) {
+    config.cpulse_divisor.forEach((n, i) => {
+      if (!preserveInactiveCpulse || cpulse[i])
+        cpulseDivisor[i] = Math.max(2, Math.min(255, n | 0));
+    });
   }
 }
 
@@ -1194,7 +1226,7 @@ async function refresh() {
         try {
           const config = await api("/api/config");
           // Lighting: device owns it — sync UI from device even when settings draft exists
-          applyDeviceLighting(config);
+          applyDeviceLighting(config, true);
           paintPreview();
           paintAutoOff();
           const deviceL0 = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
@@ -1459,6 +1491,24 @@ $$('[data-brightness]').forEach(input => input.addEventListener("input", () => {
   queueRgb({ led: Number(input.dataset.brightness), brightness: true });
 }));
 
+$$('[data-cpulse-period]').forEach(input => input.addEventListener("input", () => {
+  const led = Number(input.dataset.cpulsePeriod);
+  cpulsePeriod[led] = Math.max(500, Math.min(3000, Number(input.value) | 0));
+  input.value = cpulsePeriod[led];
+  if (cpulse[led])
+    queueRgb({ applyCpulse: true, cpulseLed: led, skipLeds: true });
+  queueSettingsSave();
+}));
+
+$$('[data-cpulse-divisor]').forEach(input => input.addEventListener("input", () => {
+  const led = Number(input.dataset.cpulseDivisor);
+  cpulseDivisor[led] = Math.max(2, Math.min(255, Number(input.value) | 0));
+  input.value = cpulseDivisor[led];
+  if (cpulse[led])
+    queueRgb({ applyCpulse: true, cpulseLed: led, skipLeds: true });
+  queueSettingsSave();
+}));
+
 $("#autoOffToggle")?.addEventListener("click", () => {
   autoOffEnabled = !autoOffEnabled;
   paintAutoOff();
@@ -1499,7 +1549,8 @@ $(".light-rows")?.addEventListener("click", event => {
     const led = Number(cpulseBtn.dataset.cpulse);
     cpulse[led] = !cpulse[led];
     paintPreview();
-    queueRgb({ applyCpulse: true, skipLeds: true });
+    queueRgb({ applyCpulse: true, cpulseLed: led, skipLeds: true });
+    queueSettingsSave();
     return;
   }
   const btn = event.target.closest("[data-quick]");

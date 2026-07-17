@@ -852,6 +852,29 @@ main {
   display: block;
 }
 
+.cpulse-config {
+  display: flex;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cpulse-config label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cpulse-config input {
+  width: 56px;
+  padding: 3px 5px;
+  border: var(--hairline) solid var(--glass-stroke-soft);
+  border-radius: 6px;
+  background: var(--glass);
+  color: var(--text);
+  font: inherit;
+}
+
 .quick-colors {
   display: flex;
   flex-wrap: nowrap;

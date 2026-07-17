@@ -8,22 +8,15 @@
 
 #define PRESS_PULSE_LEN 16
 #define U8_FULL_SCALE 255
-#define BREATH_MIN_SCALE (U8_FULL_SCALE / BREATH_MIN_DIVISOR)
-#define BREATH_DROP_SCALE (U8_FULL_SCALE - BREATH_MIN_SCALE)
 #define BREATH_PHASE_HALF 128
 #define BREATH_EASE_SHIFT 7
 #define BREATH_EASE_SCALE (1 << BREATH_EASE_SHIFT)
 #define BREATH_EASE_MAX (BREATH_EASE_SCALE - 1)
 #define BREATH_EASE_ROUND (BREATH_EASE_SCALE >> 1)
-#define BREATH_DROP_COEFFICIENT \
-  (((BREATH_DROP_SCALE * BREATH_EASE_SCALE) + BREATH_EASE_MAX - 1) / \
-   BREATH_EASE_MAX)
-#define BREATH_PERIOD_TICKS \
-  ((BREATH_PERIOD_MS + (LIGHT_LOOP_MS / 2)) / LIGHT_LOOP_MS)
-#define BREATH_PHASE_INCREMENT \
-  ((65536UL + (BREATH_PERIOD_TICKS / 2)) / BREATH_PERIOD_TICKS)
+#define BREATH_PERIOD_MIN_MS 500
+#define BREATH_PERIOD_MAX_MS 3000
 
-#if BREATH_PERIOD_MS < 500 || BREATH_PERIOD_MS > 3000
+#if BREATH_PERIOD_MS < BREATH_PERIOD_MIN_MS || BREATH_PERIOD_MS > BREATH_PERIOD_MAX_MS
 #error BREATH_PERIOD_MS must be between 500 and 3000
 #endif
 #if BREATH_MIN_DIVISOR < 2 || BREATH_MIN_DIVISOR > 255
@@ -37,6 +30,10 @@ uint8_t pulse_en;
 uint8_t cpulse_en;
 static __xdata uint8_t cpulse_pre_bri[LED_COUNT];
 static __xdata uint16_t cpulse_phase_accum[LED_COUNT];
+static __xdata uint16_t cpulse_phase_increment[LED_COUNT];
+static __xdata uint16_t cpulse_drop_coefficient[LED_COUNT];
+uint16_t cpulse_period_ms[LED_COUNT];
+uint8_t cpulse_min_divisor[LED_COUNT];
 uint8_t auto_off_en;
 uint8_t auto_off_index;
 static uint16_t idle_ticks;
@@ -175,9 +172,20 @@ static uint8_t apply_led_fade(uint8_t value, uint8_t led) {
   return ((uint16_t)value * ((uint16_t)f + 1)) >> 8;
 }
 
-// Algorithmic breathing: full brightness → 1/5 → full brightness.
+static uint16_t breath_period_to_increment(uint16_t period_ms) {
+  uint16_t ticks = period_ms / LIGHT_LOOP_MS;
+  return (uint16_t)(65535U / ticks);
+}
+
+static uint16_t breath_divisor_to_coefficient(uint8_t divisor) {
+  uint16_t drop_scale = U8_FULL_SCALE - (U8_FULL_SCALE / divisor);
+  return (uint16_t)(((drop_scale * BREATH_EASE_SCALE) +
+                     BREATH_EASE_MAX - 1) / BREATH_EASE_MAX);
+}
+
+// Algorithmic breathing: full brightness → configured fraction → full.
 // x is triangular distance from peak; x*(full-x) creates smooth easing.
-static uint8_t breath_factor(uint8_t phase) {
+static uint8_t breath_factor(uint8_t phase, uint16_t drop_coefficient) {
   uint8_t x;
   uint8_t smooth;
   uint8_t drop;
@@ -186,7 +194,7 @@ static uint8_t breath_factor(uint8_t phase) {
           : (uint8_t)(U8_FULL_SCALE - phase);
   smooth = (uint8_t)(((uint16_t)x *
                       (uint16_t)(U8_FULL_SCALE - x)) >> BREATH_EASE_SHIFT);
-  drop = (uint8_t)((((uint16_t)BREATH_DROP_COEFFICIENT * smooth) +
+  drop = (uint8_t)(((drop_coefficient * smooth) +
                     BREATH_EASE_ROUND) >> BREATH_EASE_SHIFT);
   return (uint8_t)(U8_FULL_SCALE - drop);
 }
@@ -195,7 +203,7 @@ static uint8_t breath_factor(uint8_t phase) {
 static uint8_t apply_output_factor(uint8_t value, uint8_t factor) {
   if (factor == U8_FULL_SCALE)
     return value;
-  // Example at trough: current 200 × (51 + 1) / 256 = 40.
+  // The factor is derived from the brightness divisor configured at runtime.
   return ((uint16_t)value * ((uint16_t)factor + 1)) >> 8;
 }
 
@@ -295,27 +303,26 @@ static void do_set_auto_off(uint8_t en, uint8_t index) {
   do_wake();
 }
 
-static void do_set_cpulse(uint8_t mask) {
-  uint8_t i;
-  uint8_t changed = 0;
-  mask &= 0x07;
-  for (i = 0; i < LED_COUNT; i++) {
-    uint8_t bit = (uint8_t)(1 << i);
-    if ((mask & bit) && !(cpulse_en & bit)) {
-      cpulse_pre_bri[i] = brightness[i];
-      cpulse_en |= bit;
-      pulse_t[i] = 0;
-      cpulse_phase_accum[i] = 0;
-      changed = 1;
-    } else if (!(mask & bit) && (cpulse_en & bit)) {
-      cpulse_en &= ~bit;
-      pulse_t[i] = 0;
-      cpulse_phase_accum[i] = 0;
-      brightness[i] = cpulse_pre_bri[i];
-      changed = 1;
-    }
-  }
-  if (changed) {
+void light_set_cpulse_led(uint8_t led, uint8_t en, uint16_t period_ms,
+                         uint8_t min_divisor) {
+  uint8_t bit;
+
+  cpulse_period_ms[led] = period_ms;
+  cpulse_min_divisor[led] = min_divisor;
+  cpulse_phase_increment[led] = breath_period_to_increment(period_ms);
+  cpulse_drop_coefficient[led] = breath_divisor_to_coefficient(min_divisor);
+
+  bit = (uint8_t)(1 << led);
+  if (en && !(cpulse_en & bit)) {
+    cpulse_pre_bri[led] = brightness[led];
+    cpulse_en |= bit;
+    pulse_t[led] = 0;
+    cpulse_phase_accum[led] = 0;
+  } else if (!en && (cpulse_en & bit)) {
+    cpulse_en &= ~bit;
+    pulse_t[led] = 0;
+    cpulse_phase_accum[led] = 0;
+    brightness[led] = cpulse_pre_bri[led];
     out_dirty = 1;
     out_settle = 2;
   }
@@ -395,7 +402,8 @@ static void neo_update(void) {
       nr[i] = v; ng[i] = v; nb[i] = v;
     } else {
       if (cpulse_en & (1 << i))
-        factor = breath_factor((uint8_t)(cpulse_phase_accum[i] >> 8));
+        factor = breath_factor((uint8_t)(cpulse_phase_accum[i] >> 8),
+                               cpulse_drop_coefficient[i]);
       else if (pulse_t[i])
         factor = press_pulse_curve[PRESS_PULSE_LEN - pulse_t[i]];
       else
@@ -422,7 +430,7 @@ static void neo_update(void) {
   // repeat levels. Phase wraps naturally at 16 bits with no endpoint blink.
   for (i = 0; i < LED_COUNT; i++)
     if (cpulse_en & (1 << i))
-      cpulse_phase_accum[i] += (uint16_t)BREATH_PHASE_INCREMENT;
+      cpulse_phase_accum[i] += cpulse_phase_increment[i];
   leds_fade_tick();
 }
 
@@ -432,6 +440,11 @@ void light_init(void) {
     pulse_t[i] = 0;
     cpulse_pre_bri[i] = 0;
     cpulse_phase_accum[i] = 0;
+    cpulse_period_ms[i] = BREATH_PERIOD_MS;
+    cpulse_min_divisor[i] = BREATH_MIN_DIVISOR;
+    cpulse_phase_increment[i] = breath_period_to_increment(BREATH_PERIOD_MS);
+    cpulse_drop_coefficient[i] =
+        breath_divisor_to_coefficient(BREATH_MIN_DIVISOR);
     led_fade[i] = 0;
     led_fade_tgt[i] = 0;
     out_dip_tgt[i] = 0;
@@ -470,9 +483,6 @@ void light_rqt_u8(uint8_t rqt, uint8_t src, uint8_t a) {
     break;
   case LIGHT_RQT_SET_PULSE:
     do_set_pulse(a);
-    break;
-  case LIGHT_RQT_SET_CPULSE:
-    do_set_cpulse(a);
     break;
   default:
     break;

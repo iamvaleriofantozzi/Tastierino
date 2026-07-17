@@ -359,6 +359,7 @@ void raw_handle(void) {
   uint8_t layer;
   uint8_t step;
   uint8_t data_off;
+  uint16_t period_ms;
   if (!count)
     return;
   for (i = 0; i < count && i < RAW_PACKET_SIZE; i++)
@@ -410,12 +411,16 @@ void raw_handle(void) {
       light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
       raw_response(command, STATUS_OK);
     }
-  } else if (command == CMD_SET_CPULSE) {
-    if (count < 2) {
+  } else if (command == CMD_SET_CPULSE_LED) {
+    period_ms = (uint16_t)rawPacket[3] | ((uint16_t)rawPacket[4] << 8);
+    if (count < 6) {
       raw_response(command, STATUS_BAD_LENGTH);
+    } else if (rawPacket[1] >= LED_COUNT || period_ms < 500 ||
+               period_ms > 3000 || rawPacket[5] < 2) {
+      raw_response(command, STATUS_BAD_COMMAND);
     } else {
-      light_rqt_u8(LIGHT_RQT_SET_CPULSE, LIGHT_SRC_EXTERNAL,
-                   (uint8_t)(rawPacket[1] & 0x07));
+      light_set_cpulse_led(rawPacket[1], rawPacket[2], period_ms,
+                           rawPacket[5]);
       raw_response(command, STATUS_OK);
     }
   } else if (command == CMD_SET_KEYMAP) {
@@ -483,6 +488,11 @@ void raw_handle(void) {
     rawPacket[16] = auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
                                                         : auto_off_index;
     rawPacket[17] = cpulse_en & 0x07;
+    for (i = 0; i < LED_COUNT; i++) {
+      rawPacket[18 + i * 2] = (uint8_t)cpulse_period_ms[i];
+      rawPacket[19 + i * 2] = (uint8_t)(cpulse_period_ms[i] >> 8);
+      rawPacket[24 + i] = cpulse_min_divisor[i];
+    }
   } else if (command == CMD_SET_PULSE) {
     if (count < 2)
       raw_response(command, STATUS_BAD_LENGTH);

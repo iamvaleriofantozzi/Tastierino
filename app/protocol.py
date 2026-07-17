@@ -18,6 +18,7 @@ SET_AUTO_OFF = 0x0C
 SET_RGB_LED = 0x0D
 SET_BRIGHTNESS_LED = 0x0E
 SET_CPULSE = 0x0F
+SET_CPULSE_LED = 0x10
 RESPONSE = 0x80
 
 CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")
