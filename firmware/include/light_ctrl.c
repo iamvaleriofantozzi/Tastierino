@@ -61,20 +61,19 @@ static const uint8_t __code press_pulse_curve[PRESS_PULSE_LEN] = {
   200, 218, 232, 242, 248, 252, 254, 255
 };
 
-static const uint16_t __code auto_off_sec_table[AUTO_OFF_TABLE_LEN] = {
-  0, 1, 3, 5,
-  10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120,
-  130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240,
-  250, 260, 270, 280, 290, 300
-};
-
-uint8_t auto_off_index_from_sec(uint16_t sec) {
-  uint8_t i;
-  for (i = 0; i < AUTO_OFF_TABLE_LEN; i++) {
-    if (auto_off_sec_table[i] >= sec)
-      return i;
-  }
-  return AUTO_OFF_MAX_INDEX;
+// Exact match of former auto_off_sec_table[] (0,1,3,5, then 10..300 step 10).
+static uint16_t auto_off_sec_from_index(uint8_t index) {
+  if (index > AUTO_OFF_MAX_INDEX)
+    index = AUTO_OFF_MAX_INDEX;
+  if (index >= 4)
+    return (uint16_t)(index - 3) * 10;
+  if (index == 0)
+    return 0;
+  if (index == 1)
+    return 1;
+  if (index == 2)
+    return 3;
+  return 5;
 }
 
 static uint8_t leds_any_brightness(void) {
@@ -158,18 +157,17 @@ static void finish_out_pending_led(uint8_t led) {
   set_fade_tgt_led(led, out_return_tgt[led]);
 }
 
+// (value * (factor+1)) >> 8 — same as former scale/fade/output helpers.
+static uint8_t u8_mul_scale(uint8_t value, uint8_t factor) {
+  return (uint8_t)(((uint16_t)value * ((uint16_t)factor + 1)) >> 8);
+}
+
 static uint8_t scale_color(uint8_t value, uint8_t led) {
-  uint8_t bri = show_b[led];
-  return ((uint16_t)value * ((uint16_t)bri + 1)) >> 8;
+  return u8_mul_scale(value, show_b[led]);
 }
 
 static uint8_t apply_led_fade(uint8_t value, uint8_t led) {
-  uint8_t f = led_fade[led];
-  if (f == 0)
-    return 0;
-  if (f == 255)
-    return value;
-  return ((uint16_t)value * ((uint16_t)f + 1)) >> 8;
+  return u8_mul_scale(value, led_fade[led]);
 }
 
 static uint16_t breath_period_to_increment(uint16_t period_ms) {
@@ -203,8 +201,7 @@ static uint8_t breath_factor(uint8_t phase, uint16_t drop_coefficient) {
 static uint8_t apply_output_factor(uint8_t value, uint8_t factor) {
   if (factor == U8_FULL_SCALE)
     return value;
-  // The factor is derived from the brightness divisor configured at runtime.
-  return ((uint16_t)value * ((uint16_t)factor + 1)) >> 8;
+  return u8_mul_scale(value, factor);
 }
 
 static void leds_fade_tick(void) {
@@ -371,8 +368,7 @@ static void leds_idle_tick(void) {
   if (i >= LED_COUNT)
     return;
 
-  sec = auto_off_sec_table[auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
-                                                               : auto_off_index];
+  sec = auto_off_sec_from_index(auto_off_index);
   if (sec == 0) {
     set_fade_tgt_all(0);
     return;

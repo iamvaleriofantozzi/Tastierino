@@ -15,8 +15,6 @@
 volatile __bit HID_EP1_writeBusyFlag = 0; // upload pointer busy flag
 volatile __bit HID_EP2_writeBusyFlag = 0;
 
-// uint8_t   SetupReq,SetupLen,Ready,Count,FLAG,UsbConfig;
-uint8_t len, i;
 volatile __data uint8_t HID_controlTarget = 0;
 volatile __xdata uint8_t USBByteCountEP2 = 0;
 volatile __xdata uint8_t statusLed = 0;
@@ -116,19 +114,15 @@ void HID_EP0_OUT(void) {
   HID_controlTarget = 0;
 }
 
-uint8_t HID_available() { return USBByteCountEP2; }
+uint8_t HID_available(void) { return USBByteCountEP2; }
 
-uint8_t HID_statusLed() { return statusLed; }
-
-
-
-void HID_ack() {
+void HID_ack(void) {
   USBByteCountEP2 = 0;
   USBBufOutPointEP2 = 0;
   UEP2_CTRL = UEP2_CTRL & ~MASK_UEP_R_RES | UEP_R_RES_ACK;
 }
 
-char HID_read() {
+char HID_read(void) {
   if (USBByteCountEP2 == 0)
     return 0;
   __data char data = EP2_buffer[USBBufOutPointEP2];
@@ -155,7 +149,7 @@ void HID_EP1_IN(void) {
   HID_EP1_writeBusyFlag = 0;                               // clear busy flag
 }
 
-void HID_EP1_OUT() {
+void HID_EP1_OUT(void) {
   if (U_TOG_OK) // Discard unsynchronized packets
   {
     switch (EP1_buffer[0]) {

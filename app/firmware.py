@@ -73,7 +73,17 @@ def inspect_binary(path):
         raise RuntimeError("Firmware is empty")
     if len(data) > MAX_CODE_SIZE:
         raise RuntimeError(f"Firmware too large: {len(data)} > {MAX_CODE_SIZE} bytes")
-    return {"path": str(path), "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    from . import protocol as proto
+
+    return {
+        "path": str(path),
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "version": proto.FW_VERSION,
+        "major": proto.FW_VERSION_MAJOR,
+        "minor": proto.FW_VERSION_MINOR,
+        "patch": proto.FW_VERSION_PATCH,
+    }
 
 
 def build():

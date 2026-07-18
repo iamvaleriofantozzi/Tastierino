@@ -48,6 +48,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/firmware":
                 self.send_json(200, firmware.inspect_binary(firmware.DEFAULT_BIN))
                 return
+            if path == "/api/version":
+                self.send_json(200, DEVICE.get_version())
+                return
             requested = "index.html" if path == "/" else path.lstrip("/")
             file = (STATIC / requested).resolve()
             if STATIC.resolve() not in file.parents or not file.is_file():

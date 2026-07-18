@@ -137,18 +137,3 @@ void NEO_writeRawColor(uint8_t r, uint8_t g, uint8_t b) {
 void NEO_writeColor(uint8_t r, uint8_t g, uint8_t b) {
   NEO_writeRawColor(gamma8[r], gamma8[g], gamma8[b]);
 }
-
-// ===================================================================================
-// Write Hue Value (0..191) and Brightness (0..2) to a Single Pixel
-// ===================================================================================
-void NEO_writeHue(uint8_t hue, uint8_t bright) {
-  uint8_t phase = hue >> 6;
-  uint8_t step  = (hue & 63) << bright;
-  uint8_t nstep = (63 << bright) - step;
-  switch(phase) {
-    case 0:   NEO_writeColor(nstep,  step,     0); break;
-    case 1:   NEO_writeColor(    0, nstep,  step); break;
-    case 2:   NEO_writeColor( step,     0, nstep); break;
-    default:  break;
-  }
-}

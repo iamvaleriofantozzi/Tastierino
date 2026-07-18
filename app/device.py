@@ -26,13 +26,30 @@ class MacroPad:
 
     def status(self):
         devices = self.enumerate()
-        return {
+        info = {
             "connected": bool(devices),
             "hidapi": hid is not None,
             "vid": f"{protocol.VID:04x}",
             "pid": f"{protocol.PID:04x}",
             "product": devices[0].get("product_string") if devices else None,
             "serial": devices[0].get("serial_number") if devices else None,
+            "firmware": None,
+        }
+        if devices:
+            try:
+                info["firmware"] = self.get_version()["firmware"]
+            except DeviceError:
+                pass
+        return info
+
+    def get_version(self):
+        r = self.exchange(protocol.GET_VERSION)
+        major, minor, patch = r[2], r[3], r[4]
+        return {
+            "firmware": f"{major}.{minor}.{patch}",
+            "major": major,
+            "minor": minor,
+            "patch": patch,
         }
 
     def exchange(self, command, payload=b"", timeout=1000):

@@ -26,4 +26,3 @@ void NEO_sendByte(uint8_t data);                          // send a single byte 
 uint8_t NEO_gamma8(uint8_t value);                        // gamma-correct one channel
 void NEO_writeRawColor(uint8_t r, uint8_t g, uint8_t b);  // already gamma-corrected RGB
 void NEO_writeColor(uint8_t r, uint8_t g, uint8_t b);     // write color to a single pixel
-void NEO_writeHue(uint8_t hue, uint8_t bright);           // hue (0..191), brightness (0..2)

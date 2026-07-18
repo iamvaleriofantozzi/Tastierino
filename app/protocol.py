@@ -19,7 +19,33 @@ SET_RGB_LED = 0x0D
 SET_BRIGHTNESS_LED = 0x0E
 SET_CPULSE = 0x0F
 SET_CPULSE_LED = 0x10
+GET_VERSION = 0x11
 RESPONSE = 0x80
+
+PROTOCOL_VERSION = 7
+
+# Single source: firmware/include/protocol.h (FW_VERSION_*)
+def _fw_version_from_header():
+    import re
+    from pathlib import Path
+
+    header = Path(__file__).resolve().parents[1] / "firmware" / "include" / "protocol.h"
+    text = header.read_text(encoding="utf-8")
+    vals = {}
+    for name in ("FW_VERSION_MAJOR", "FW_VERSION_MINOR", "FW_VERSION_PATCH"):
+        m = re.search(rf"#define\s+{name}\s+(\d+)", text)
+        if not m:
+            raise RuntimeError(f"{name} missing in {header}")
+        vals[name] = int(m.group(1))
+    return vals
+
+
+_FW = _fw_version_from_header()
+FW_VERSION_MAJOR = _FW["FW_VERSION_MAJOR"]
+FW_VERSION_MINOR = _FW["FW_VERSION_MINOR"]
+FW_VERSION_PATCH = _FW["FW_VERSION_PATCH"]
+FW_VERSION = f"{FW_VERSION_MAJOR}.{FW_VERSION_MINOR}.{FW_VERSION_PATCH}"
+del _FW
 
 CONTROL_NAMES = ("Button 1", "Button 2", "Button 3", "Encoder click", "Encoder clockwise", "Encoder counterclockwise")
 LT_CAPABLE = 4  # first four controls support long-press Fn

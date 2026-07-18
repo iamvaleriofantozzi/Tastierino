@@ -1215,7 +1215,11 @@ async function refresh() {
   try {
     const info = await api("/api/status");
     status.className = `status ${info.connected ? "connected" : "offline"}`;
-    status.lastElementChild.textContent = info.connected ? "Connected" : "Not connected";
+    if (info.connected && info.firmware != null) {
+      status.lastElementChild.textContent = `Connected · FW ${info.firmware}`;
+    } else {
+      status.lastElementChild.textContent = info.connected ? "Connected" : "Not connected";
+    }
 
     const settings = await api("/api/settings");
     if (settings.exists && applySettingsSnapshot(settings)) {
@@ -1268,8 +1272,28 @@ async function refresh() {
   }
   try {
     const fw = await api("/api/firmware");
-    $("#firmwareInfo").textContent = `${fw.size} bytes · SHA-256 ${fw.sha256.slice(0,16)}…`;
+    setFirmwareInfo(fw);
   } catch (error) { $("#firmwareInfo").textContent = error.message; }
+}
+
+function setFirmwareInfo(fw) {
+  const ver = fw.version ? `v${fw.version}` : "v?";
+  $("#firmwareInfo").textContent =
+    `${ver} · ${fw.size} bytes · SHA-256 ${fw.sha256.slice(0, 16)}…`;
+}
+
+async function queryDeviceFirmware() {
+  const el = $("#deviceFwInfo");
+  try {
+    const ver = await api("/api/version");
+    el.textContent = `Device FW: v${ver.firmware}`;
+    el.classList.remove("muted");
+    log(`Device reports firmware v${ver.firmware}`);
+  } catch (e) {
+    el.textContent = `Device FW: ${e.message}`;
+    el.classList.add("muted");
+    log(`Ask device version: ${e.message}`);
+  }
 }
 
 async function loadKeymapFromDevice() {
@@ -1629,7 +1653,8 @@ function openFirmwareCard() {
 }
 
 $("#loadDeviceKeymap")?.addEventListener("click", () => loadKeymapFromDevice());
-$("#buildFirmware").addEventListener("click", async event => { openFirmwareCard(); const b=event.currentTarget;b.disabled=true;log("Building firmware…");try{const r=await post("/api/build");$("#firmwareInfo").textContent=`${r.firmware.size} bytes · SHA-256 ${r.firmware.sha256.slice(0,16)}…`;log(r.log.trim());}catch(e){log(`Build failed: ${e.message}`);}finally{b.disabled=false;} });
+$("#buildFirmware").addEventListener("click", async event => { openFirmwareCard(); const b=event.currentTarget;b.disabled=true;log("Building firmware…");try{const r=await post("/api/build");setFirmwareInfo(r.firmware);log(r.log.trim());log(`Project firmware v${r.firmware.version}`);}catch(e){log(`Build failed: ${e.message}`);}finally{b.disabled=false;} });
+$("#queryFwVersion").addEventListener("click", async event => { openFirmwareCard(); const b=event.currentTarget;b.disabled=true;try{await queryDeviceFirmware();}finally{b.disabled=false;} });
 $("#firmwareFile").addEventListener("change", async event => { const file=event.target.files[0];if(!file)return;try{const r=await api("/api/firmware/upload",{method:"POST",headers:{"Content-Type":"application/octet-stream","X-Macropad-Client":"1"},body:await file.arrayBuffer()});uploaded=true;$("#uploadInfo").textContent=`${file.name} · ${r.size} bytes · ${r.sha256.slice(0,12)}…`;log("External firmware validated.");}catch(e){uploaded=false;log(`Upload: ${e.message}`);} });
 $("#flashFirmware").addEventListener("click", () => { openFirmwareCard(); $("#flashDialog").showModal(); });
 $("#confirmFlash").addEventListener("click", async event => { event.preventDefault();$("#flashDialog").close();openFirmwareCard();log("Flash started: do not unplug USB…");try{const r=await post("/api/flash",{confirm:true,uploaded,enter_bootloader:true});log(r.log.trim());log("Flash and verify completed.");if(r.wave)log("White/blue wave pulse played on device LEDs.");else log("Device back, but wave pulse skipped (no HID yet).");setTimeout(refresh,800);}catch(e){log(`Flash failed: ${e.message}`);} });
@@ -1654,4 +1679,4 @@ createKeyRows();
 buildQuickColors();
 paintPreview();
 refresh();
-setInterval(async () => { try { const s=await api("/api/status");const el=$("#status");el.className=`status ${s.connected?"connected":"offline"}`;el.lastElementChild.textContent=s.connected?"Connected":"Not connected";} catch {} },3000);
+setInterval(async () => { try { const s=await api("/api/status");const el=$("#status");el.className=`status ${s.connected?"connected":"offline"}`;el.lastElementChild.textContent=s.connected?(s.firmware!=null?`Connected · FW ${s.firmware}`:"Connected"):"Not connected";} catch {} },3000);

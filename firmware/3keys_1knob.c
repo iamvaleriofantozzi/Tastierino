@@ -17,13 +17,6 @@ void USB_ISR(void) __interrupt(INT_NO_USB) { USB_interrupt(); }
 #define EEPROM_MAGIC_0 0x4d
 #define EEPROM_MAGIC_1 0x50
 #define EEPROM_VERSION 8
-#define EEPROM_V1_SIZE 32
-#define EEPROM_V2_SIZE 34
-#define EEPROM_V3_SIZE 35
-#define EEPROM_V4_SIZE 54
-#define EEPROM_V5_SIZE 108
-#define EEPROM_V6_SIZE 126
-#define EEPROM_V7_SIZE 128
 #define EEPROM_SIZE 128
 
 __xdata uint8_t rawPacket[RAW_PACKET_SIZE];
@@ -135,173 +128,86 @@ void defaults_load(void) {
   auto_off_index = 9; // 60s
 }
 
-uint8_t config_checksum(uint8_t version, uint8_t size) {
+uint8_t config_checksum(void) {
   uint8_t i;
-  uint8_t value = version;
-  for (i = 4; i < size; i++)
+  uint8_t value = EEPROM_VERSION;
+  for (i = 4; i < EEPROM_SIZE; i++)
     value ^= eeprom_read_byte(i);
   return value;
+}
+
+static void eeprom_load_binding(__xdata struct binding *b, uint8_t addr) {
+  b->mod = eeprom_read_byte(addr);
+  b->type = eeprom_read_byte((uint8_t)(addr + 1));
+  b->code = eeprom_read_byte((uint8_t)(addr + 2));
+  sanitize_binding(b);
+}
+
+static void eeprom_load_layer_keys(uint8_t layer, uint8_t base) {
+  uint8_t i;
+  for (i = 0; i < KEY_COUNT; i++)
+    eeprom_load_binding(&layers[layer][i], (uint8_t)(base + i * KEY_FIELDS));
+}
+
+static void eeprom_store_binding(__xdata struct binding *b, uint8_t addr) {
+  eeprom_write_byte(addr, b->mod);
+  eeprom_write_byte((uint8_t)(addr + 1), b->type);
+  eeprom_write_byte((uint8_t)(addr + 2), b->code);
 }
 
 void config_load(void) {
   uint8_t i;
   uint8_t layer;
-  uint8_t version = eeprom_read_byte(2);
-  uint8_t size;
-  if (version == 1)
-    size = EEPROM_V1_SIZE;
-  else if (version == 2)
-    size = EEPROM_V2_SIZE;
-  else if (version == 3)
-    size = EEPROM_V3_SIZE;
-  else if (version == 4)
-    size = EEPROM_V4_SIZE;
-  else if (version == 5)
-    size = EEPROM_V5_SIZE;
-  else if (version == 6)
-    size = EEPROM_V6_SIZE;
-  else if (version == 7)
-    size = EEPROM_V7_SIZE;
-  else
-    size = EEPROM_SIZE;
 
   if (eeprom_read_byte(0) != EEPROM_MAGIC_0 ||
       eeprom_read_byte(1) != EEPROM_MAGIC_1 ||
-      (version < 1 || version > EEPROM_VERSION) ||
-      eeprom_read_byte(3) != config_checksum(version, size)) {
+      eeprom_read_byte(2) != EEPROM_VERSION ||
+      eeprom_read_byte(3) != config_checksum()) {
     defaults_load();
     return;
   }
 
-  for (i = 0; i < KEY_COUNT; i++) {
-    layers[0][i].mod = eeprom_read_byte(4 + i * KEY_FIELDS);
-    layers[0][i].type = eeprom_read_byte(5 + i * KEY_FIELDS);
-    layers[0][i].code = eeprom_read_byte(6 + i * KEY_FIELDS);
-    sanitize_binding(&layers[0][i]);
-    l0_step1[i].mod = 0;
-    l0_step1[i].type = KEYBOARD;
-    l0_step1[i].code = 0;
-  }
+  eeprom_load_layer_keys(0, 4);
+  for (i = 0; i < KEY_COUNT; i++)
+    eeprom_load_binding(&l0_step1[i], (uint8_t)(22 + i * KEY_FIELDS));
+  for (layer = 1; layer < LAYER_COUNT; layer++)
+    eeprom_load_layer_keys(layer, (uint8_t)(22 + layer * 18));
 
-  if (version >= 6) {
-    for (i = 0; i < KEY_COUNT; i++) {
-      l0_step1[i].mod = eeprom_read_byte(22 + i * KEY_FIELDS);
-      l0_step1[i].type = eeprom_read_byte(23 + i * KEY_FIELDS);
-      l0_step1[i].code = eeprom_read_byte(24 + i * KEY_FIELDS);
-      sanitize_binding(&l0_step1[i]);
-    }
-    for (layer = 1; layer < LAYER_COUNT; layer++) {
-      for (i = 0; i < KEY_COUNT; i++) {
-        layers[layer][i].mod = eeprom_read_byte(22 + layer * 18 + i * KEY_FIELDS);
-        layers[layer][i].type = eeprom_read_byte(23 + layer * 18 + i * KEY_FIELDS);
-        layers[layer][i].code = eeprom_read_byte(24 + layer * 18 + i * KEY_FIELDS);
-        sanitize_binding(&layers[layer][i]);
-      }
-    }
-    for (i = 0; i < LED_COUNT; i++) {
-      colors[i].r = eeprom_read_byte(112 + i * RGB_FIELDS);
-      colors[i].g = eeprom_read_byte(113 + i * RGB_FIELDS);
-      colors[i].b = eeprom_read_byte(114 + i * RGB_FIELDS);
-    }
-    brightness[0] = eeprom_read_byte(121);
-    brightness[1] = eeprom_read_byte(122);
-    brightness[2] = eeprom_read_byte(123);
-    pulse_en = eeprom_read_byte(124) & 0x07;
-    lt_mask = eeprom_read_byte(125) & 0x0f;
-  } else if (version >= 5) {
-    for (layer = 1; layer < LAYER_COUNT; layer++) {
-      for (i = 0; i < KEY_COUNT; i++) {
-        layers[layer][i].mod = eeprom_read_byte(4 + layer * 18 + i * KEY_FIELDS);
-        layers[layer][i].type = eeprom_read_byte(5 + layer * 18 + i * KEY_FIELDS);
-        layers[layer][i].code = eeprom_read_byte(6 + layer * 18 + i * KEY_FIELDS);
-        sanitize_binding(&layers[layer][i]);
-      }
-    }
-    for (i = 0; i < LED_COUNT; i++) {
-      colors[i].r = eeprom_read_byte(94 + i * RGB_FIELDS);
-      colors[i].g = eeprom_read_byte(95 + i * RGB_FIELDS);
-      colors[i].b = eeprom_read_byte(96 + i * RGB_FIELDS);
-    }
-    brightness[0] = eeprom_read_byte(103);
-    brightness[1] = eeprom_read_byte(104);
-    brightness[2] = eeprom_read_byte(105);
-    pulse_en = eeprom_read_byte(106) & 0x07;
-    lt_mask = eeprom_read_byte(107) & 0x0f;
-  } else if (version >= 4) {
-    for (i = 0; i < KEY_COUNT; i++) {
-      layers[1][i].mod = eeprom_read_byte(22 + i * KEY_FIELDS);
-      layers[1][i].type = eeprom_read_byte(23 + i * KEY_FIELDS);
-      layers[1][i].code = eeprom_read_byte(24 + i * KEY_FIELDS);
-      sanitize_binding(&layers[1][i]);
-    }
-    for (layer = 2; layer < LAYER_COUNT; layer++)
-      copy_layer(layer, 1);
-    for (i = 0; i < LED_COUNT; i++) {
-      colors[i].r = eeprom_read_byte(40 + i * RGB_FIELDS);
-      colors[i].g = eeprom_read_byte(41 + i * RGB_FIELDS);
-      colors[i].b = eeprom_read_byte(42 + i * RGB_FIELDS);
-    }
-    brightness[0] = eeprom_read_byte(49);
-    brightness[1] = eeprom_read_byte(50);
-    brightness[2] = eeprom_read_byte(51);
-    pulse_en = eeprom_read_byte(52) & 0x07;
-    lt_mask = eeprom_read_byte(53) & 0x0f;
-  } else {
-    copy_layer(1, 0);
-    for (layer = 2; layer < LAYER_COUNT; layer++)
-      copy_layer(layer, 1);
-    for (i = 0; i < LED_COUNT; i++) {
-      colors[i].r = eeprom_read_byte(22 + i * RGB_FIELDS);
-      colors[i].g = eeprom_read_byte(23 + i * RGB_FIELDS);
-      colors[i].b = eeprom_read_byte(24 + i * RGB_FIELDS);
-    }
-    brightness[0] = eeprom_read_byte(31);
-    brightness[1] = version == 1 ? brightness[0] : eeprom_read_byte(32);
-    brightness[2] = version == 1 ? brightness[0] : eeprom_read_byte(33);
-    pulse_en = version >= 3 ? (eeprom_read_byte(34) & 0x07) : 0x07;
-    lt_mask = 0x00;
+  for (i = 0; i < LED_COUNT; i++) {
+    colors[i].r = eeprom_read_byte((uint8_t)(112 + i * RGB_FIELDS));
+    colors[i].g = eeprom_read_byte((uint8_t)(113 + i * RGB_FIELDS));
+    colors[i].b = eeprom_read_byte((uint8_t)(114 + i * RGB_FIELDS));
   }
-
-  if (version >= 8) {
-    auto_off_en = eeprom_read_byte(126) & 1;
-    auto_off_index = eeprom_read_byte(127);
-    if (auto_off_index > AUTO_OFF_MAX_INDEX)
-      auto_off_index = AUTO_OFF_MAX_INDEX;
-  } else if (version >= 7) {
-    auto_off_en = eeprom_read_byte(126) & 1;
-    auto_off_index = auto_off_index_from_sec((uint16_t)eeprom_read_byte(127) * 10);
-  } else {
-    auto_off_en = 0;
-    auto_off_index = 9;
-  }
+  brightness[0] = eeprom_read_byte(121);
+  brightness[1] = eeprom_read_byte(122);
+  brightness[2] = eeprom_read_byte(123);
+  pulse_en = eeprom_read_byte(124) & 0x07;
+  lt_mask = eeprom_read_byte(125) & 0x0f;
+  auto_off_en = eeprom_read_byte(126) & 1;
+  auto_off_index = eeprom_read_byte(127);
+  if (auto_off_index > AUTO_OFF_MAX_INDEX)
+    auto_off_index = AUTO_OFF_MAX_INDEX;
 }
 
 void config_save(void) {
   uint8_t i;
   uint8_t layer;
-  uint8_t checksum = EEPROM_VERSION;
   eeprom_write_byte(0, EEPROM_MAGIC_0);
   eeprom_write_byte(1, EEPROM_MAGIC_1);
   eeprom_write_byte(2, EEPROM_VERSION);
   for (i = 0; i < KEY_COUNT; i++) {
-    eeprom_write_byte(4 + i * KEY_FIELDS, layers[0][i].mod);
-    eeprom_write_byte(5 + i * KEY_FIELDS, layers[0][i].type);
-    eeprom_write_byte(6 + i * KEY_FIELDS, layers[0][i].code);
-    eeprom_write_byte(22 + i * KEY_FIELDS, l0_step1[i].mod);
-    eeprom_write_byte(23 + i * KEY_FIELDS, l0_step1[i].type);
-    eeprom_write_byte(24 + i * KEY_FIELDS, l0_step1[i].code);
+    eeprom_store_binding(&layers[0][i], (uint8_t)(4 + i * KEY_FIELDS));
+    eeprom_store_binding(&l0_step1[i], (uint8_t)(22 + i * KEY_FIELDS));
   }
   for (layer = 1; layer < LAYER_COUNT; layer++) {
-    for (i = 0; i < KEY_COUNT; i++) {
-      eeprom_write_byte(22 + layer * 18 + i * KEY_FIELDS, layers[layer][i].mod);
-      eeprom_write_byte(23 + layer * 18 + i * KEY_FIELDS, layers[layer][i].type);
-      eeprom_write_byte(24 + layer * 18 + i * KEY_FIELDS, layers[layer][i].code);
-    }
+    for (i = 0; i < KEY_COUNT; i++)
+      eeprom_store_binding(&layers[layer][i],
+                           (uint8_t)(22 + layer * 18 + i * KEY_FIELDS));
   }
   for (i = 0; i < LED_COUNT; i++) {
-    eeprom_write_byte(112 + i * RGB_FIELDS, colors[i].r);
-    eeprom_write_byte(113 + i * RGB_FIELDS, colors[i].g);
-    eeprom_write_byte(114 + i * RGB_FIELDS, colors[i].b);
+    eeprom_write_byte((uint8_t)(112 + i * RGB_FIELDS), colors[i].r);
+    eeprom_write_byte((uint8_t)(113 + i * RGB_FIELDS), colors[i].g);
+    eeprom_write_byte((uint8_t)(114 + i * RGB_FIELDS), colors[i].b);
   }
   eeprom_write_byte(121, brightness[0]);
   eeprom_write_byte(122, brightness[1]);
@@ -311,9 +217,7 @@ void config_save(void) {
   eeprom_write_byte(126, auto_off_en & 1);
   eeprom_write_byte(127, auto_off_index > AUTO_OFF_MAX_INDEX ? AUTO_OFF_MAX_INDEX
                                                              : auto_off_index);
-  for (i = 4; i < EEPROM_SIZE; i++)
-    checksum ^= eeprom_read_byte(i);
-  eeprom_write_byte(3, checksum);
+  eeprom_write_byte(3, config_checksum());
 }
 
 void raw_response(uint8_t command, uint8_t status) {
@@ -324,14 +228,31 @@ void raw_response(uint8_t command, uint8_t status) {
   rawPacket[1] = status;
 }
 
+static uint8_t raw_require(uint8_t command, uint8_t count, uint8_t min) {
+  if (count < min) {
+    raw_response(command, STATUS_BAD_LENGTH);
+    return 0;
+  }
+  return 1;
+}
+
+static void raw_ok_output(uint8_t command) {
+  light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
+  raw_response(command, STATUS_OK);
+}
+
+static __xdata struct binding *layer_slot(uint8_t layer, uint8_t step,
+                                          uint8_t i) {
+  if (layer == 0 && step == 1)
+    return &l0_step1[i];
+  return &layers[layer][i];
+}
+
 void pack_layer(uint8_t layer, uint8_t step, uint8_t offset) {
   uint8_t i;
   __xdata struct binding *src;
   for (i = 0; i < KEY_COUNT; i++) {
-    if (layer == 0 && step == 1)
-      src = &l0_step1[i];
-    else
-      src = &layers[layer][i];
+    src = layer_slot(layer, step, i);
     rawPacket[offset + i * 3] = src->mod;
     rawPacket[offset + 1 + i * 3] = src->type;
     rawPacket[offset + 2 + i * 3] = src->code;
@@ -342,10 +263,7 @@ void unpack_layer(uint8_t layer, uint8_t step, uint8_t offset) {
   uint8_t i;
   __xdata struct binding *dst;
   for (i = 0; i < KEY_COUNT; i++) {
-    if (layer == 0 && step == 1)
-      dst = &l0_step1[i];
-    else
-      dst = &layers[layer][i];
+    dst = layer_slot(layer, step, i);
     dst->mod = rawPacket[offset + i * 3];
     dst->type = rawPacket[offset + 1 + i * 3] > MOUSE ? 0 : rawPacket[offset + 1 + i * 3];
     dst->code = rawPacket[offset + 2 + i * 3];
@@ -367,105 +285,110 @@ void raw_handle(void) {
   HID_ack();
   command = rawPacket[0];
 
-  if (command == CMD_SET_RGB) {
-    if (count < 10) {
-      raw_response(command, STATUS_BAD_LENGTH);
-    } else {
+  switch (command) {
+  case CMD_SET_RGB:
+    if (!raw_require(command, count, 10))
+      break;
+    for (i = 0; i < LED_COUNT; i++)
+      light_set_rgb_led(i, rawPacket[1 + i * 3], rawPacket[2 + i * 3],
+                        rawPacket[3 + i * 3]);
+    raw_ok_output(command);
+    break;
+
+  case CMD_SET_BRIGHTNESS:
+    if (!raw_require(command, count, 2))
+      break;
+    if (count >= 4) {
       for (i = 0; i < LED_COUNT; i++)
-        light_set_rgb_led(i, rawPacket[1 + i * 3], rawPacket[2 + i * 3],
-                          rawPacket[3 + i * 3]);
-      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
-      raw_response(command, STATUS_OK);
-    }
-  } else if (command == CMD_SET_BRIGHTNESS) {
-    if (count < 2)
-      raw_response(command, STATUS_BAD_LENGTH);
-    else {
-      if (count >= 4) {
-        for (i = 0; i < LED_COUNT; i++)
-          light_set_brightness_led(i, rawPacket[1 + i]);
-      } else {
-        light_set_brightness_all(rawPacket[1]);
-      }
-      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
-      raw_response(command, STATUS_OK);
-    }
-  } else if (command == CMD_SET_RGB_LED) {
-    if (count < 5) {
-      raw_response(command, STATUS_BAD_LENGTH);
-    } else if (rawPacket[1] >= LED_COUNT) {
-      raw_response(command, STATUS_BAD_COMMAND);
+        light_set_brightness_led(i, rawPacket[1 + i]);
     } else {
-      light_set_rgb_led(rawPacket[1], rawPacket[2], rawPacket[3],
-                        rawPacket[4]);
-      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
-      raw_response(command, STATUS_OK);
+      light_set_brightness_all(rawPacket[1]);
     }
-  } else if (command == CMD_SET_BRIGHTNESS_LED) {
-    if (count < 3) {
-      raw_response(command, STATUS_BAD_LENGTH);
-    } else if (rawPacket[1] >= LED_COUNT) {
+    raw_ok_output(command);
+    break;
+
+  case CMD_SET_RGB_LED:
+    if (!raw_require(command, count, 5))
+      break;
+    if (rawPacket[1] >= LED_COUNT) {
       raw_response(command, STATUS_BAD_COMMAND);
-    } else {
-      light_set_brightness_led(rawPacket[1], rawPacket[2]);
-      light_rqt(LIGHT_RQT_OUTPUT_CHANGE, LIGHT_SRC_EXTERNAL);
-      raw_response(command, STATUS_OK);
+      break;
     }
-  } else if (command == CMD_SET_CPULSE_LED) {
+    light_set_rgb_led(rawPacket[1], rawPacket[2], rawPacket[3], rawPacket[4]);
+    raw_ok_output(command);
+    break;
+
+  case CMD_SET_BRIGHTNESS_LED:
+    if (!raw_require(command, count, 3))
+      break;
+    if (rawPacket[1] >= LED_COUNT) {
+      raw_response(command, STATUS_BAD_COMMAND);
+      break;
+    }
+    light_set_brightness_led(rawPacket[1], rawPacket[2]);
+    raw_ok_output(command);
+    break;
+
+  case CMD_SET_CPULSE_LED:
     period_ms = (uint16_t)rawPacket[3] | ((uint16_t)rawPacket[4] << 8);
-    if (count < 6) {
-      raw_response(command, STATUS_BAD_LENGTH);
-    } else if (rawPacket[1] >= LED_COUNT || period_ms < 500 ||
-               period_ms > 3000 || rawPacket[5] < 2) {
+    if (!raw_require(command, count, 6))
+      break;
+    if (rawPacket[1] >= LED_COUNT || period_ms < 500 || period_ms > 3000 ||
+        rawPacket[5] < 2) {
       raw_response(command, STATUS_BAD_COMMAND);
-    } else {
-      light_set_cpulse_led(rawPacket[1], rawPacket[2], period_ms,
-                           rawPacket[5]);
-      raw_response(command, STATUS_OK);
+      break;
     }
-  } else if (command == CMD_SET_KEYMAP) {
+    light_set_cpulse_led(rawPacket[1], rawPacket[2], period_ms, rawPacket[5]);
+    raw_response(command, STATUS_OK);
+    break;
+
+  case CMD_SET_KEYMAP:
     step = 0;
     data_off = 2;
     if (count >= 21) {
       step = rawPacket[2];
       data_off = 3;
     }
-    if (count < data_off + 18) {
-      raw_response(command, STATUS_BAD_LENGTH);
-    } else if (rawPacket[1] >= LAYER_COUNT) {
+    if (!raw_require(command, count, (uint8_t)(data_off + 18)))
+      break;
+    if (rawPacket[1] >= LAYER_COUNT || step >= MACRO_STEPS ||
+        (step > 0 && rawPacket[1] != 0)) {
       raw_response(command, STATUS_BAD_COMMAND);
-    } else if (step >= MACRO_STEPS || (step > 0 && rawPacket[1] != 0)) {
-      raw_response(command, STATUS_BAD_COMMAND);
-    } else {
-      unpack_layer(rawPacket[1], step, data_off);
-      raw_response(command, STATUS_OK);
+      break;
     }
-  } else if (command == CMD_GET_KEYMAP) {
+    unpack_layer(rawPacket[1], step, data_off);
+    raw_response(command, STATUS_OK);
+    break;
+
+  case CMD_GET_KEYMAP:
     step = (count >= 3) ? rawPacket[2] : 0;
-    if (count < 2) {
-      raw_response(command, STATUS_BAD_LENGTH);
-    } else if (rawPacket[1] >= LAYER_COUNT) {
+    if (!raw_require(command, count, 2))
+      break;
+    if (rawPacket[1] >= LAYER_COUNT || step >= MACRO_STEPS ||
+        (step > 0 && rawPacket[1] != 0)) {
       raw_response(command, STATUS_BAD_COMMAND);
-    } else if (step >= MACRO_STEPS || (step > 0 && rawPacket[1] != 0)) {
-      raw_response(command, STATUS_BAD_COMMAND);
-    } else {
-      layer = rawPacket[1];
-      raw_response(command, STATUS_OK);
-      rawPacket[2] = layer;
-      rawPacket[3] = step;
-      pack_layer(layer, step, 4);
+      break;
     }
-  } else if (command == CMD_SET_LT_MASK) {
-    if (count < 2)
-      raw_response(command, STATUS_BAD_LENGTH);
-    else {
-      lt_mask = rawPacket[1] & 0x0f;
-      raw_response(command, STATUS_OK);
-    }
-  } else if (command == CMD_SAVE_CONFIG) {
+    layer = rawPacket[1];
+    raw_response(command, STATUS_OK);
+    rawPacket[2] = layer;
+    rawPacket[3] = step;
+    pack_layer(layer, step, 4);
+    break;
+
+  case CMD_SET_LT_MASK:
+    if (!raw_require(command, count, 2))
+      break;
+    lt_mask = rawPacket[1] & 0x0f;
+    raw_response(command, STATUS_OK);
+    break;
+
+  case CMD_SAVE_CONFIG:
     config_save();
     raw_response(command, STATUS_OK);
-  } else if (command == CMD_GET_CONFIG) {
+    break;
+
+  case CMD_GET_CONFIG:
     raw_response(command, STATUS_OK);
     rawPacket[2] = PROTOCOL_VERSION;
     rawPacket[3] = lt_mask & 0x0f;
@@ -475,7 +398,9 @@ void raw_handle(void) {
       rawPacket[23 + i * 3] = colors[i].g;
       rawPacket[24 + i * 3] = colors[i].b;
     }
-  } else if (command == CMD_GET_LIGHTING) {
+    break;
+
+  case CMD_GET_LIGHTING:
     raw_response(command, STATUS_OK);
     for (i = 0; i < LED_COUNT; i++) {
       rawPacket[2 + i] = brightness[i];
@@ -493,26 +418,39 @@ void raw_handle(void) {
       rawPacket[19 + i * 2] = (uint8_t)(cpulse_period_ms[i] >> 8);
       rawPacket[24 + i] = cpulse_min_divisor[i];
     }
-  } else if (command == CMD_SET_PULSE) {
-    if (count < 2)
-      raw_response(command, STATUS_BAD_LENGTH);
-    else {
-      light_rqt_u8(LIGHT_RQT_SET_PULSE, LIGHT_SRC_EXTERNAL, rawPacket[1]);
-      raw_response(command, STATUS_OK);
-    }
-  } else if (command == CMD_SET_AUTO_OFF) {
-    if (count < 3)
-      raw_response(command, STATUS_BAD_LENGTH);
-    else {
-      light_rqt_u8_u8(LIGHT_RQT_SET_AUTO_OFF, LIGHT_SRC_EXTERNAL, rawPacket[1],
-                      rawPacket[2]);
-      raw_response(command, STATUS_OK);
-    }
-  } else if (command == CMD_PING || command == CMD_ENTER_BOOTLOADER) {
+    break;
+
+  case CMD_SET_PULSE:
+    if (!raw_require(command, count, 2))
+      break;
+    light_rqt_u8(LIGHT_RQT_SET_PULSE, LIGHT_SRC_EXTERNAL, rawPacket[1]);
+    raw_response(command, STATUS_OK);
+    break;
+
+  case CMD_SET_AUTO_OFF:
+    if (!raw_require(command, count, 3))
+      break;
+    light_rqt_u8_u8(LIGHT_RQT_SET_AUTO_OFF, LIGHT_SRC_EXTERNAL, rawPacket[1],
+                    rawPacket[2]);
+    raw_response(command, STATUS_OK);
+    break;
+
+  case CMD_PING:
+  case CMD_ENTER_BOOTLOADER:
     raw_response(command, STATUS_OK);
     rawPacket[2] = PROTOCOL_VERSION;
-  } else {
+    break;
+
+  case CMD_GET_VERSION:
+    raw_response(command, STATUS_OK);
+    rawPacket[2] = FW_VERSION_MAJOR;
+    rawPacket[3] = FW_VERSION_MINOR;
+    rawPacket[4] = FW_VERSION_PATCH;
+    break;
+
+  default:
     raw_response(command, STATUS_BAD_COMMAND);
+    break;
   }
 
   HID_rawSend(rawPacket, RAW_PACKET_SIZE);

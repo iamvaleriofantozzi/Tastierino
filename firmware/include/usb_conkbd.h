@@ -8,11 +8,6 @@
 
 // Functions
 #define KBD_init() HID_init()         // init keyboard
-void KBD_press(uint8_t key);          // press a key on keyboard
-void KBD_release(uint8_t key);        // release a key on keyboard
-void KBD_type(uint8_t key);           // press and release a key on keyboard
-void KBD_releaseAll(void);            // release all keys on keyboard
-void KBD_print(char* str);            // type some text on the keyboard
 
 void KBD_code_press(uint8_t mod, uint8_t code);
 void KBD_code_release(uint8_t mod, uint8_t code);
@@ -21,12 +16,10 @@ void KBD_code_type(uint8_t mod, uint8_t code);
 void CON_press(uint16_t key);         // press a consumer key on keyboard
 void CON_release(uint16_t key);       // release a consumer key on keyboard
 void CON_type(uint16_t key);          // press and release a consumer key
-void CON_releaseAll(void);            // release all consumer keys on keyboard
 
 void MOUSE_press(uint8_t code);       // mouse button down / scroll notch
 void MOUSE_release(uint8_t code);     // mouse button up
 void MOUSE_type(uint8_t code);        // click or one scroll notch
-void MOUSE_releaseAll(void);
 
 // Mouse binding codes (type = MOUSE / 2)
 #define MOUSE_BTN_LEFT      0x01
@@ -34,15 +27,6 @@ void MOUSE_releaseAll(void);
 #define MOUSE_BTN_MIDDLE    0x04
 #define MOUSE_WHL_UP        0x10
 #define MOUSE_WHL_DOWN      0x11
-
-uint8_t KBD_getState(void);           // get keyboard status LEDs
-
-// Keyboard LED states
-#define KBD_NUM_LOCK_state            (KBD_getState() & 1)
-#define KBD_CAPS_LOCK_state           ((KBD_getState() >> 1) & 1)
-#define KBD_SCROLL_LOCK_state         ((KBD_getState() >> 2) & 1)
-#define KBD_COMPOSE_state             ((KBD_getState() >> 3) & 1)
-#define KBD_KANA_state                ((KBD_getState() >> 4) & 1)
 
 // Modifier keys
 #define KBD_KEY_LEFT_CTRL   0x80

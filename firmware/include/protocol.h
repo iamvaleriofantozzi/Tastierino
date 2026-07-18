@@ -2,6 +2,9 @@
 
 #define RAW_PACKET_SIZE       32
 #define PROTOCOL_VERSION      7
+#define FW_VERSION_MAJOR      1
+#define FW_VERSION_MINOR      0
+#define FW_VERSION_PATCH      1
 #define MACRO_STEPS           2  /* max sequential taps on layer 0 (Tap) */
 
 #define CMD_SET_RGB           0x01
@@ -20,6 +23,7 @@
 #define CMD_SET_BRIGHTNESS_LED 0x0E /* per-LED: [cmd, led, bri] */
 #define CMD_SET_CPULSE        0x0F  /* continuous pulse: [cmd, mask] — bit 0..2 = LED 0..2 */
 #define CMD_SET_CPULSE_LED    0x10  /* [cmd, led, en, period_lo, period_hi, divisor] */
+#define CMD_GET_VERSION       0x11  /* → [maj, min, patch] */
 #define CMD_RESPONSE          0x80
 
 #define STATUS_OK             0

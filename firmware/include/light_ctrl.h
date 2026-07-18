@@ -59,5 +59,3 @@ void light_set_brightness_all(uint8_t bri);
 void light_set_cpulse_led(uint8_t led, uint8_t en, uint16_t period_ms,
                          uint8_t min_divisor);
 void light_tick(void);
-
-uint8_t auto_off_index_from_sec(uint16_t sec);

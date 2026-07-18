@@ -115,7 +115,15 @@
         </summary>
         <div class="firmware-body">
           <div class="firmware-grid">
-            <div><p class="label">Project firmware</p><p id="firmwareInfo" class="mono">Loading…</p><button id="buildFirmware" class="secondary">Build firmware</button></div>
+            <div>
+              <p class="label">Project firmware</p>
+              <p id="firmwareInfo" class="mono">Loading…</p>
+              <div class="firmware-actions">
+                <button id="buildFirmware" class="secondary">Build firmware</button>
+                <button id="queryFwVersion" class="ghost">Ask device version</button>
+              </div>
+              <p id="deviceFwInfo" class="mono muted">Device FW: —</p>
+            </div>
             <div><label class="label" for="firmwareFile">Or .bin file</label><input id="firmwareFile" type="file" accept=".bin,application/octet-stream"><p id="uploadInfo" class="mono muted">No file selected</p></div>
           </div>
           <div class="danger-zone"><div><strong>Write firmware</strong><p>The device will reboot. Do not unplug during verify.</p></div><button id="flashFirmware" class="danger">Start flash…</button></div>
