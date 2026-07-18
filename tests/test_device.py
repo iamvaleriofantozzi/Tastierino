@@ -8,10 +8,7 @@ from app import protocol
 class FakeDevice:
     last_write = None
     config_response = bytes(
-        [protocol.GET_CONFIG | protocol.RESPONSE, 0, 2, 0x0F] + [0, 0, 0x68] * 6
-    ).ljust(32, b"\0")
-    keymap_l1_response = bytes(
-        [protocol.GET_KEYMAP | protocol.RESPONSE, 0, 1] + [0, 0, 0x6B] * 6
+        [protocol.GET_CONFIG | protocol.RESPONSE, 0, 7, 0x0F] + [0, 0, 0x68] * 6
     ).ljust(32, b"\0")
     lighting_response = bytes(
         [protocol.GET_LIGHTING | protocol.RESPONSE, 0, 20, 120, 240, 0, 80, 255, 0, 255, 80, 255, 20, 0, 0x05, 1, 12]
@@ -38,7 +35,13 @@ class FakeDevice:
         elif command == protocol.GET_CONFIG:
             response = self.config_response
         elif command == protocol.GET_KEYMAP:
-            response = self.keymap_l1_response
+            layer = self.last_write[2]
+            step = self.last_write[3] if len(self.last_write) > 3 else 0
+            code = 0x6B if layer >= 1 else 0x68
+            # modern layout: [resp, ok, layer, step] + 6×(mod,type,code)
+            response = bytes(
+                [protocol.GET_KEYMAP | protocol.RESPONSE, 0, layer, step] + [0, 0, code] * 6
+            ).ljust(32, b"\0")
         else:
             response = bytes([command | protocol.RESPONSE, 0]).ljust(32, b"\0")
         return list(bytes([0]) + response)
@@ -61,11 +64,13 @@ class DeviceTests(unittest.TestCase):
     @patch("app.device.hid", FakeHid)
     def test_get_config_packet_layout(self):
         config = MacroPad().get_config()
-        self.assertEqual(config["protocol"], 2)
+        self.assertEqual(config["protocol"], 7)
         self.assertEqual(config["lt_mask"], 0x0F)
         self.assertEqual(config["brightness"], [20, 120, 240])
         self.assertEqual(config["keys"][0]["code"], 0x68)
+        self.assertEqual(config["keys_l0"][0]["code"], 0x68)
         self.assertEqual(config["keys_l1"][0]["code"], 0x6B)
+        self.assertEqual(config["keys_fn"][0][0]["code"], 0x6B)
         self.assertEqual(config["colors"][2], [255, 20, 0])
         self.assertEqual(config["pulse"], [True, False, True])
         self.assertEqual(config["auto_off_enabled"], True)

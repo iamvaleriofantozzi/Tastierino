@@ -112,8 +112,25 @@ class MacroPad:
             raise DeviceError("Only Tap layer supports multi-step")
         modern = (protocol_version is None) or (protocol_version >= 4)
         payload = bytes([layer, step]) if modern else bytes([layer])
-        r = self.exchange(protocol.GET_KEYMAP, payload)
-        return self._parse_keys(r, 4 if modern else 3)
+        # Same CMD_GET_KEYMAP response id for every layer/step — on macOS a
+        # stale report can match the command byte. Require firmware echo.
+        last_err = None
+        for _ in range(6):
+            r = self.exchange(protocol.GET_KEYMAP, payload)
+            if modern:
+                if len(r) > 3 and r[2] == layer and r[3] == step:
+                    return self._parse_keys(r, 4)
+                last_err = DeviceError(
+                    f"Keymap echo mismatch (got L{r[2]} step{r[3]}, want L{layer} step{step})"
+                )
+            else:
+                if len(r) > 2 and r[2] == layer:
+                    return self._parse_keys(r, 3)
+                last_err = DeviceError(
+                    f"Keymap echo mismatch (got L{r[2]}, want L{layer})"
+                )
+            time.sleep(0.03)
+        raise last_err or DeviceError("Keymap read failed")
 
     def get_config(self):
         r = self.exchange(protocol.GET_CONFIG)
@@ -122,20 +139,14 @@ class MacroPad:
         protocol_version = r[2]
         lt_mask = r[3] & 0x0F
         if protocol_version >= 4:
-            try:
-                keys = self._merge_l0_steps(
-                    self.get_keymap(0, 0, protocol_version=protocol_version),
-                    self.get_keymap(0, 1, protocol_version=protocol_version),
-                )
-            except DeviceError:
-                pass
+            keys = self._merge_l0_steps(
+                self.get_keymap(0, 0, protocol_version=protocol_version),
+                self.get_keymap(0, 1, protocol_version=protocol_version),
+            )
         keys_fn = []
         if protocol_version >= 3:
             for fn in range(protocol.LT_CAPABLE):
-                try:
-                    keys_fn.append(self.get_keymap(1 + fn, 0, protocol_version=protocol_version))
-                except DeviceError:
-                    keys_fn.append([{"mod": k["mod"], "type": k["type"], "code": k["code"]} for k in keys])
+                keys_fn.append(self.get_keymap(1 + fn, 0, protocol_version=protocol_version))
         else:
             try:
                 shared = self.get_keymap(1, protocol_version=protocol_version) if protocol_version >= 2 else [

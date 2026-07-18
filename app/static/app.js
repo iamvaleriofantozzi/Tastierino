@@ -43,7 +43,6 @@ let layerKeys = [
 ];
 const DEFAULT_KEYS = layerKeys[0].map(k => normalizeKey(k));
 const DEFAULT_KEYS_FN = layerKeys[1].map(k => ({...k}));
-let settingsTimer = null;
 let editStepIndex = 0; // which sequence step the picker/record edits
 
 function normalizeKey(key) {
@@ -244,7 +243,6 @@ async function sendRgb(opts = {}) {
 function queueRgb(opts) {
   clearTimeout(rgbTimer);
   rgbTimer = setTimeout(() => sendRgb(opts), 80);
-  queueSettingsSave();
 }
 
 const MOD_CTRL = 1, MOD_SHIFT = 2, MOD_ALT = 4, MOD_GUI = 8;
@@ -589,7 +587,7 @@ const hotkeyPicker = (() => {
     anchor?.setAttribute("aria-expanded", "false");
     row = null;
     anchor = null;
-    if (pending) commitSettingsServer();
+    if (pending) syncLocalKeys();
   }
 
   cats.addEventListener("click", event => {
@@ -611,7 +609,7 @@ const hotkeyPicker = (() => {
     if (binding.type === 0 && binding.code) {
       setRowBinding(row, {...binding, mod: pickMod});
       log(`Set ${rowLabel(row)}: ${shortcutText(getRowBinding(row))}`);
-      commitSettingsServer();
+      syncLocalKeys();
     }
   });
 
@@ -622,7 +620,7 @@ const hotkeyPicker = (() => {
     const code = Number(btn.dataset.code);
     setRowBinding(row, {type, mod: type === 0 ? pickMod : 0, code});
     log(`Set ${rowLabel(row)}: ${shortcutText(getRowBinding(row))}`);
-    commitSettingsServer();
+    syncLocalKeys();
     close();
   });
 
@@ -665,7 +663,7 @@ function stopRecord({keep = true} = {}) {
     if (keep) {
       const label = shortcutText(getRowBinding(recordTarget));
       if (label !== "No action") log(`Recorded ${label}.`);
-      commitSettingsServer();
+      syncLocalKeys();
     }
     paintHotkeyField(recordTarget);
   }
@@ -742,7 +740,11 @@ function cloneKeys(keys, fallback) {
 }
 
 function cloneKeysL0(keys, fallback) {
-  return (keys || fallback).map((key, i) => normalizeKey(key || fallback[i]));
+  return (keys || fallback).map((key, i) => {
+    // Prefer explicit empty bindings from device over factory defaults.
+    if (key) return normalizeKey(key);
+    return normalizeKey(fallback[i]);
+  });
 }
 
 function keysEmpty(keys) {
@@ -795,61 +797,9 @@ function applyFnLayers(keysFn, legacyL1) {
   }
 }
 
-function applySettingsSnapshot(data) {
-  if (!data) return false;
-  layerKeys[0] = cloneKeysL0(data.keys_l0 || data.keys, DEFAULT_KEYS);
-  applyFnLayers(data.keys_fn, data.keys_l1);
-  ltMask = typeof data.lt_mask === "number" ? data.lt_mask & 0x0f : 0;
-  const holds = data.hold_entries || data.holdEntries;
-  if (Array.isArray(holds) && holds.length) {
-    holdEntries = dedupeHoldEntries(holds);
-  } else {
-    holdEntries = holdEntriesFromMask(ltMask);
-  }
-  if (Array.isArray(data.colors) && data.colors.length === 3) {
-    colors = data.colors.map(c => c.map(n => Math.max(0, Math.min(255, n | 0))));
-  }
-  if (Array.isArray(data.brightness) && data.brightness.length === 3) {
-    brightness = data.brightness.map(n => Math.max(0, Math.min(255, n | 0)));
-  }
-  if (Array.isArray(data.pulse) && data.pulse.length === 3) {
-    pulse = data.pulse.map(Boolean);
-  }
-  if (typeof data.auto_off_enabled === "boolean") {
-    autoOffEnabled = data.auto_off_enabled;
-  }
-  if (typeof data.auto_off_steps === "number") {
-    autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, data.auto_off_steps | 0));
-  }
-  if (Array.isArray(data.cpulse) && data.cpulse.length === 3) {
-    cpulse = data.cpulse.map(Boolean);
-  }
-  if (Array.isArray(data.cpulse_period) && data.cpulse_period.length === 3) {
-    cpulsePeriod = data.cpulse_period.map(n => Math.max(500, Math.min(3000, n | 0)));
-  }
-  if (Array.isArray(data.cpulse_divisor) && data.cpulse_divisor.length === 3) {
-    cpulseDivisor = data.cpulse_divisor.map(n => Math.max(2, Math.min(255, n | 0)));
-  }
-  return !keysEmpty(layerKeys[0]);
-}
-
-async function persistSettingsServer() {
-  const snapshot = settingsSnapshot();
-  await post("/api/settings", snapshot);
-  return snapshot;
-}
-
-function queueSettingsSave() {
-  clearTimeout(settingsTimer);
-  settingsTimer = setTimeout(() => {
-    persistSettingsServer().catch(e => log(`Settings save: ${e.message}`));
-  }, 350);
-}
-
-function commitSettingsServer() {
+function syncLocalKeys() {
   storeTapKeys();
   storeHoldKeys();
-  queueSettingsSave();
 }
 
 function wireHotkeyRow(row, onReset) {
@@ -869,7 +819,7 @@ function wireHotkeyRow(row, onReset) {
       const steps = getRowSteps(row);
       steps.splice(idx, 1);
       setRowSteps(row, steps);
-      commitSettingsServer();
+      syncLocalKeys();
       log(`Cleared ${rowLabel(row)} step ${idx + 1}.`);
       return;
     }
@@ -990,16 +940,19 @@ function createTapRows() {
         <div class="hotkey-field" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false"></div>
       </div>
       <button type="button" class="ghost record" aria-label="Record tap for ${name}">Record</button>
-      <button type="button" class="ghost clear-hotkey" aria-label="Reset tap for ${name}">Reset</button>`;
-    setRowSteps(row, (layerKeys[0][i] || DEFAULT_KEYS[i]).steps?.length
-      ? (layerKeys[0][i] || DEFAULT_KEYS[i]).steps
-      : [layerKeys[0][i] || DEFAULT_KEYS[i]]);
+      <button type="button" class="ghost clear-hotkey" aria-label="Clear tap for ${name}">Clear</button>`;
+    setRowSteps(row, (() => {
+      const key = layerKeys[0][i];
+      if (key?.steps?.length) return key.steps;
+      if (key && (key.code || key.mod || key.type)) return [key];
+      return []; // truly empty — do not fall back to factory defaults
+    })());
     wireHotkeyRow(row, () => {
       stopRecord({keep: false});
       hotkeyPicker.close();
-      setRowSteps(row, (DEFAULT_KEYS[i].steps?.length ? DEFAULT_KEYS[i].steps : [DEFAULT_KEYS[i]]));
-      commitSettingsServer();
-      log(`Reset tap ${name}.`);
+      setRowSteps(row, []);
+      syncLocalKeys();
+      log(`Cleared tap ${name}.`);
     });
     root.append(row);
   });
@@ -1060,7 +1013,7 @@ function createHoldRows() {
       }
       storeHoldKeys();
       createHoldRows();
-      commitSettingsServer();
+      syncLocalKeys();
     });
     row.querySelector(".target-select").addEventListener("change", () => {
       const nextFn = Number(row.querySelector(".fn-select").value);
@@ -1075,15 +1028,21 @@ function createHoldRows() {
       setRowBinding(row, layerKeys[1 + nextFn][t] || DEFAULT_KEYS_FN[t]);
       storeHoldKeys();
       createHoldRows();
-      commitSettingsServer();
+      syncLocalKeys();
     });
     row.querySelector(".remove-hold").addEventListener("click", () => {
       stopRecord({keep: false});
       hotkeyPicker.close();
       storeHoldKeys();
+      // Drop UI row AND clear Fn-layer override (otherwise Save rewrites the old binding).
+      layerKeys[1 + fn][target] = {
+        mod: (layerKeys[0][target]?.mod | 0),
+        type: (layerKeys[0][target]?.type | 0),
+        code: (layerKeys[0][target]?.code | 0),
+      };
       holdEntries = holdEntries.filter((_, i) => i !== rowIndex);
       createHoldRows();
-      commitSettingsServer();
+      syncLocalKeys();
       log(`Removed hold: Fn ${controls[fn]} → ${controls[target]}.`);
     });
     root.append(row);
@@ -1110,7 +1069,7 @@ function addHoldRow() {
   }
   holdEntries.push(pair);
   createHoldRows();
-  commitSettingsServer();
+  syncLocalKeys();
   log(`Added hold: Fn ${controls[pair.fn]} → ${controls[pair.target]}.`);
 }
 
@@ -1217,58 +1176,34 @@ async function refresh() {
     status.className = `status ${info.connected ? "connected" : "offline"}`;
     if (info.connected && info.firmware != null) {
       status.lastElementChild.textContent = `Connected · FW ${info.firmware}`;
+      const el = $("#deviceFwInfo");
+      if (el) {
+        el.textContent = `Device FW: v${info.firmware}`;
+        el.classList.remove("muted");
+      }
     } else {
       status.lastElementChild.textContent = info.connected ? "Connected" : "Not connected";
     }
 
-    const settings = await api("/api/settings");
-    if (settings.exists && applySettingsSnapshot(settings)) {
+    if (!info.connected) {
       renderKeymap();
       paintPreview();
-      log(`Settings from server · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
-      if (info.connected) {
-        try {
-          const config = await api("/api/config");
-          // Lighting: device owns it — sync UI from device even when settings draft exists
-          applyDeviceLighting(config, true);
-          paintPreview();
-          paintAutoOff();
-          const deviceL0 = cloneKeysL0(config.keys_l0 || config.keys, DEFAULT_KEYS);
-          const deviceFn = Array.isArray(config.keys_fn) && config.keys_fn.length === 4
-            ? config.keys_fn.map(layer => cloneKeys(layer, DEFAULT_KEYS_FN))
-            : null;
-          const deviceMask = typeof config.lt_mask === "number" ? config.lt_mask & 0x0f : 0;
-          let diverged = !layerEqual(layerKeys[0], deviceL0) || (ltMask & 0x0f) !== deviceMask;
-          if (deviceFn) {
-            for (let fn = 0; fn < LT_CAPABLE; fn++) {
-              if (!layerEqual(layerKeys[1 + fn], deviceFn[fn])) diverged = true;
-            }
-          }
-          if (diverged) {
-            log(`Device connected · protocol ${config.protocol} · draft differs — Save to write EEPROM`);
-          } else {
-            log(`Device connected · protocol ${config.protocol}`);
-          }
-        } catch (e) {
-          log(`Device: ${e.message}`);
-        }
-      }
-    } else if (info.connected) {
+      log("Not connected — plug in device to load keymap/lighting");
+    } else {
       const config = await api("/api/config");
       applyDeviceKeymap(config);
       renderKeymap();
       paintPreview();
-      await persistSettingsServer();
-      log(`Device connected · protocol ${config.protocol} · seeded server settings`);
-    } else {
-      renderKeymap();
-      paintPreview();
-      log("Not connected · no server settings yet");
+      paintAutoOff();
+      const l0 = layerKeys[0].map(k => k.code).join(", ");
+      log(`Loaded from device · FW ${info.firmware ?? "?"} · L0 [${l0}] · LT ${ltMask}`);
     }
   } catch (error) {
     status.className = "status offline";
     status.lastElementChild.textContent = "Not connected";
     log(error.message);
+    renderKeymap();
+    paintPreview();
   }
   try {
     const fw = await api("/api/firmware");
@@ -1302,8 +1237,14 @@ async function loadKeymapFromDevice() {
     applyDeviceKeymap(config);
     renderKeymap();
     paintPreview();
-    await persistSettingsServer();
-    log(`Loaded from device → server · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
+        const l0 = layerKeys[0].map(k => {
+      const steps = (k.steps || []).map(s => s.code);
+      return steps.length > 1 ? steps.join("→") : String(k.code);
+    });
+    const fnSummary = [0, 1, 2, 3].map(fn =>
+      layerKeys[1 + fn].map(k => k.code).join(",")
+    ).join(" | ");
+    log(`Loaded from device · L0 [${l0.join(", ")}] · LT ${ltMask} · Fn [${fnSummary}]`);
   } catch (e) {
     log(`Load from device: ${e.message}`);
   }
@@ -1521,7 +1462,7 @@ $$('[data-cpulse-period]').forEach(input => input.addEventListener("input", () =
   input.value = cpulsePeriod[led];
   if (cpulse[led])
     queueRgb({ applyCpulse: true, cpulseLed: led, skipLeds: true });
-  queueSettingsSave();
+  syncLocalKeys();
 }));
 
 $$('[data-cpulse-divisor]').forEach(input => input.addEventListener("input", () => {
@@ -1530,21 +1471,21 @@ $$('[data-cpulse-divisor]').forEach(input => input.addEventListener("input", () 
   input.value = cpulseDivisor[led];
   if (cpulse[led])
     queueRgb({ applyCpulse: true, cpulseLed: led, skipLeds: true });
-  queueSettingsSave();
+  syncLocalKeys();
 }));
 
 $("#autoOffToggle")?.addEventListener("click", () => {
   autoOffEnabled = !autoOffEnabled;
   paintAutoOff();
   queueRgb({ applyAutoOff: true, skipLeds: true });
-  queueSettingsSave();
+  syncLocalKeys();
 });
 
 $("#autoOffSteps")?.addEventListener("input", () => {
   autoOffSteps = Math.max(0, Math.min(AUTO_OFF_MAX_INDEX, Number($("#autoOffSteps").value) | 0));
   paintAutoOff();
   queueRgb({ applyAutoOff: true, skipLeds: true });
-  queueSettingsSave();
+  syncLocalKeys();
 });
 
 $(".light-rows")?.addEventListener("click", event => {
@@ -1574,7 +1515,7 @@ $(".light-rows")?.addEventListener("click", event => {
     cpulse[led] = !cpulse[led];
     paintPreview();
     queueRgb({ applyCpulse: true, cpulseLed: led, skipLeds: true });
-    queueSettingsSave();
+    syncLocalKeys();
     return;
   }
   const btn = event.target.closest("[data-quick]");
@@ -1611,13 +1552,12 @@ $("#saveConfig").addEventListener("click", async () => {
       return;
     }
     log(`Saving… L0 [${snapshot.keys_l0.map(k => k.code).join(", ")}] LT ${snapshot.lt_mask}`);
-    await post("/api/settings", snapshot);
     await post("/api/keymap", {keys: snapshot.keys_l0, layer: 0, lt_mask: snapshot.lt_mask});
     for (let fn = 0; fn < LT_CAPABLE; fn++) {
       await post("/api/keymap", {keys: snapshot.keys_fn[fn], layer: 1 + fn});
     }
     await sendRgb();
-    await post("/api/save", snapshot);
+    await post("/api/save", {});
     const verify = await api("/api/config");
     const v0 = cloneKeysL0(verify.keys_l0 || verify.keys, DEFAULT_KEYS);
     const vMask = typeof verify.lt_mask === "number" ? verify.lt_mask & 0x0f : snapshot.lt_mask;
@@ -1643,8 +1583,7 @@ $("#saveConfig").addEventListener("click", async () => {
       holdEntries = holdEntriesFromDevice(ltMask, layerKeys[0], [1, 2, 3, 4].map(i => layerKeys[i]));
     }
     renderKeymap();
-    await persistSettingsServer();
-    log(`Saved OK · server + device · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
+    log(`Saved OK · device · L0 [${layerKeys[0].map(k => k.code).join(", ")}] · LT ${ltMask}`);
   } catch (e) { log(`Save: ${e.message}`); }
 });
 function openFirmwareCard() {

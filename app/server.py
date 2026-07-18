@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 from .device import DeviceError, MacroPad
 from . import firmware
-from . import settings_store
 
 STATIC = Path(__file__).with_name("static")
 DEVICE = MacroPad()
@@ -41,9 +40,6 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/config":
                 self.send_json(200, DEVICE.get_config())
-                return
-            if path == "/api/settings":
-                self.send_json(200, settings_store.load())
                 return
             if path == "/api/firmware":
                 self.send_json(200, firmware.inspect_binary(firmware.DEFAULT_BIN))
@@ -174,13 +170,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Invalid LT mask")
                 DEVICE.set_lt_mask(mask)
                 self.send_json(200, {"ok": True})
-            elif path == "/api/settings":
-                saved = settings_store.save(self.read_json())
-                self.send_json(200, saved)
             elif path == "/api/save":
-                data = self.read_json()
-                if data.get("keys_l0") or data.get("keys"):
-                    settings_store.save(data)
                 DEVICE.save()
                 self.send_json(200, {"ok": True})
             elif path == "/api/build":
