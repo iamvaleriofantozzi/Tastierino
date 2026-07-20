@@ -1,0 +1,23 @@
+[
+  {
+    "state": "free",
+    "session_id": null,
+    "name": "",
+    "bound_at": 17326.757482375,
+    "done_at": 17328.706565541
+  },
+  {
+    "state": "done",
+    "session_id": "019f7656-9de4-74f2-876c-04f7fe467384",
+    "name": "Chat 019f7656",
+    "bound_at": 17330.396834291,
+    "done_at": 17859.402182458
+  },
+  {
+    "state": "done",
+    "session_id": "019f7656-ae12-7402-a97b-3dd658ef98d7",
+    "name": "Chat 019f7656",
+    "bound_at": 17334.970925708,
+    "done_at": 17859.499221833
+  }
+]

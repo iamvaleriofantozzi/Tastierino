@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "lt_mask": 6,
+  "keys_l0": [
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 104,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 0,
+          "code": 104
+        }
+      ],
+      "name": "Button 1"
+    },
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 105,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 0,
+          "code": 105
+        }
+      ],
+      "name": "Button 2"
+    },
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 106,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 0,
+          "code": 106
+        }
+      ],
+      "name": "Button 3"
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 205,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 205
+        }
+      ],
+      "name": "Encoder click"
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 233,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 233
+        }
+      ],
+      "name": "Encoder clockwise"
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 234,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 234
+        }
+      ],
+      "name": "Encoder counterclockwise"
+    }
+  ],
+  "keys_fn": [
+    [
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "name": "Button 1"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 108,
+        "name": "Button 2"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 109,
+        "name": "Button 3"
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "name": "Encoder click"
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 16,
+        "name": "Encoder clockwise"
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 17,
+        "name": "Encoder counterclockwise"
+      }
+    ],
+    [
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 181,
+        "name": "Button 1"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 0,
+        "name": "Button 2"
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 182,
+        "name": "Button 3"
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "name": "Encoder click"
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 16,
+        "name": "Encoder clockwise"
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 17,
+        "name": "Encoder counterclockwise"
+      }
+    ],
+    [
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "name": "Button 1"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 108,
+        "name": "Button 2"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 109,
+        "name": "Button 3"
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "name": "Encoder click"
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "name": "Encoder clockwise"
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 80,
+        "name": "Encoder counterclockwise"
+      }
+    ],
+    [
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "name": "Button 1"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 108,
+        "name": "Button 2"
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 109,
+        "name": "Button 3"
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "name": "Encoder click"
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "name": "Encoder clockwise"
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 80,
+        "name": "Encoder counterclockwise"
+      }
+    ]
+  ]
+}

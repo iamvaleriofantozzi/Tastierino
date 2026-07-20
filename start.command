@@ -24,7 +24,7 @@ if [[ ! -x .venv/bin/python ]]; then
   python3 -m venv .venv
   .venv/bin/pip install -r requirements.txt
 fi
-.venv/bin/python -m app.server &
+.venv/bin/python -m app.configurator.server &
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null || true' EXIT INT TERM
 sleep 1

@@ -29,7 +29,7 @@ def _fw_version_from_header():
     import re
     from pathlib import Path
 
-    header = Path(__file__).resolve().parents[1] / "firmware" / "include" / "protocol.h"
+    header = Path(__file__).resolve().parents[2] / "firmware" / "include" / "protocol.h"
     text = header.read_text(encoding="utf-8")
     vals = {}
     for name in ("FW_VERSION_MAJOR", "FW_VERSION_MINOR", "FW_VERSION_PATCH"):

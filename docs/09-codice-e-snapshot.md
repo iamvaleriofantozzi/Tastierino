@@ -3,7 +3,7 @@
 ## Source tree
 
 ```text
-app/                 Python server, HID and web interface
+app/                 host applications (configurator: Python server, HID and web interface)
 firmware/            CH552 source, drivers, Makefile and binaries
 tests/               unit tests
 README.md            quick start

@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE_DIR = ROOT / "firmware"
 DEFAULT_BIN = FIRMWARE_DIR / "3keys_1knob.bin"
 UPLOAD_BIN = ROOT / "work" / "uploaded-firmware.bin"

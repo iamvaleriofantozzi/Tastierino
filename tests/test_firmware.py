@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import firmware
+from app.configurator import firmware
 
 
 class FirmwareTests(unittest.TestCase):

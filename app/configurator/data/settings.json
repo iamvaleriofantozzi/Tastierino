@@ -1,0 +1,473 @@
+{
+  "v": 3,
+  "keys_l0": [
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 0,
+      "steps": []
+    },
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 0,
+      "steps": []
+    },
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 0,
+      "steps": []
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 205,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 205
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 233,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 233
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 234,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 234
+        }
+      ]
+    }
+  ],
+  "keys_fn": [
+    [
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 79
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 108,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 0,
+            "code": 108
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 109,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 0,
+            "code": 109
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 1,
+            "code": 205
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 16,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 2,
+            "code": 16
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 17,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 2,
+            "code": 17
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 181,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 1,
+            "code": 181
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 0,
+        "steps": []
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 182,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 1,
+            "code": 182
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 1,
+            "code": 205
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 16,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 2,
+            "code": 16
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 2,
+        "code": 17,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 2,
+            "code": 17
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 79
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 108,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 0,
+            "code": 108
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 109,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 0,
+            "code": 109
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 1,
+            "code": 205
+          }
+        ]
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 79
+          }
+        ]
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 80,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 80
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 79
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 108,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 0,
+            "code": 108
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 0,
+        "code": 109,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 0,
+            "code": 109
+          }
+        ]
+      },
+      {
+        "mod": 0,
+        "type": 1,
+        "code": 205,
+        "steps": [
+          {
+            "mod": 0,
+            "type": 1,
+            "code": 205
+          }
+        ]
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 79,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 79
+          }
+        ]
+      },
+      {
+        "mod": 1,
+        "type": 0,
+        "code": 80,
+        "steps": [
+          {
+            "mod": 1,
+            "type": 0,
+            "code": 80
+          }
+        ]
+      }
+    ]
+  ],
+  "keys_l1": [
+    {
+      "mod": 1,
+      "type": 0,
+      "code": 79,
+      "steps": [
+        {
+          "mod": 1,
+          "type": 0,
+          "code": 79
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 108,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 0,
+          "code": 108
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 0,
+      "code": 109,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 0,
+          "code": 109
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 1,
+      "code": 205,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 1,
+          "code": 205
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 2,
+      "code": 16,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 2,
+          "code": 16
+        }
+      ]
+    },
+    {
+      "mod": 0,
+      "type": 2,
+      "code": 17,
+      "steps": [
+        {
+          "mod": 0,
+          "type": 2,
+          "code": 17
+        }
+      ]
+    }
+  ],
+  "lt_mask": 2,
+  "hold_entries": [
+    {
+      "fn": 1,
+      "target": 0
+    },
+    {
+      "fn": 1,
+      "target": 2
+    },
+    {
+      "fn": 1,
+      "target": 4
+    },
+    {
+      "fn": 1,
+      "target": 5
+    }
+  ],
+  "colors": [
+    [
+      255,
+      0,
+      0
+    ],
+    [
+      255,
+      0,
+      0
+    ],
+    [
+      255,
+      0,
+      0
+    ]
+  ],
+  "brightness": [
+    255,
+    255,
+    255
+  ],
+  "pulse": [
+    true,
+    true,
+    true
+  ],
+  "auto_off_enabled": true,
+  "auto_off_steps": 6
+}

@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from app.device import MacroPad
-from app import protocol
+from app.configurator.device import MacroPad
+from app.configurator import protocol
 
 
 class FakeDevice:
@@ -61,7 +61,7 @@ class FakeHid:
 
 
 class DeviceTests(unittest.TestCase):
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_get_config_packet_layout(self):
         config = MacroPad().get_config()
         self.assertEqual(config["protocol"], 7)
@@ -77,17 +77,17 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(config["auto_off_steps"], 12)
         self.assertEqual(len(FakeDevice.last_write), 33)
 
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_sets_three_brightness_values(self):
         MacroPad().set_brightness([10, 100, 250])
         self.assertEqual(FakeDevice.last_write[1:5], bytes([protocol.SET_BRIGHTNESS, 10, 100, 250]))
 
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_sets_pulse_mask(self):
         MacroPad().set_pulse([True, False, True])
         self.assertEqual(FakeDevice.last_write[1:3], bytes([protocol.SET_PULSE, 0x05]))
 
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_sets_auto_off(self):
         MacroPad().set_auto_off(True, 9)
         self.assertEqual(
@@ -103,7 +103,7 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(protocol.auto_off_index_from_seconds(3), 2)
         self.assertEqual(protocol.auto_off_index_from_seconds(5), 3)
 
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_set_keymap_includes_layer(self):
         keys = [{"mod": 0, "type": 0, "code": 0x04}] * 6
         MacroPad().set_keymap(keys, layer=1)
@@ -112,7 +112,7 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(FakeDevice.last_write[3], 0)  # step
         self.assertEqual(FakeDevice.last_write[4:7], bytes([0, 0, 0x04]))
 
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_set_lt_mask(self):
         MacroPad().set_lt_mask(0x05)
         self.assertEqual(FakeDevice.last_write[1:3], bytes([protocol.SET_LT_MASK, 0x05]))
@@ -129,7 +129,7 @@ class DeviceTests(unittest.TestCase):
             MacroPad._wave_led_color(0, 1),
         )
 
-    @patch("app.device.hid", FakeHid)
+    @patch("app.configurator.device.hid", FakeHid)
     def test_play_wave_pulse_restores_lighting(self):
         pad = MacroPad()
         with patch.object(pad, "set_rgb") as set_rgb, patch.object(pad, "set_brightness") as set_bri:
